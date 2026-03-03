@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AcademicClass {
+  id        String   @id @default(uuid())
+  name      String   // e.g., "TYBCA"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students Student[]
+  courses  Course[]
+}
+
+model Student {
+  id              String        @id @default(uuid())
+  rollNo          String        @unique
+  name            String
+  academicClassId String
+  academicClass   AcademicClass @relation(fields: [academicClassId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  marks Mark[]
+}
+
+model Course {
+  id              String        @id @default(uuid())
+  code            String        @unique // e.g., "CS401"
+  name            String
+  theoryCredits   Int
+  practicalCredits Int
+  academicClassId String
+  academicClass   AcademicClass @relation(fields: [academicClassId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  courseOutcomes CourseOutcome[]
+  exams          Exam[]
+}
+
+model CourseOutcome {
+  id          String   @id @default(uuid())
+  coNumber    String   // e.g., "CO1"
+  description String
+  targetPct   Float    // Target threshold e.g., 75.0
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions Question[]
+
+  @@unique([courseId, coNumber])
+}
+
+model Exam {
+  id         String   @id @default(uuid())
+  name       String   // e.g., "ISA-1", "End-Semester"
+  totalMarks Int
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  questions Question[]
+}
+
+model Question {
+  id              String        @id @default(uuid())
+  qNumber         String        // e.g., "Q1(a)"
+  maxMarks        Int
+  examId          String
+  exam            Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  courseOutcomeId String
+  courseOutcome   CourseOutcome @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  marks Mark[]
+
+  @@unique([examId, qNumber])
+}
+
+model Mark {
+  id            String   @id @default(uuid())
+  obtainedMarks Float
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([studentId, questionId])
+}
