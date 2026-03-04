@@ -66,6 +66,19 @@ app.post('/api/students/bulk-upload', async (req, res) => {
   }
 })
 
+// 2a. Get Academic Classes for Dropdown
+app.get('/api/academic-classes', async (req, res) => {
+  try {
+    const classes = await prisma.academicClass.findMany({
+      orderBy: { createdAt: 'desc' }
+    })
+    res.json(classes)
+  } catch (error) {
+    console.error('Fetch classes error:', error)
+    res.status(500).json({ error: 'Failed to fetch academic classes.' })
+  }
+})
+
 // 3. Get all Courses
 app.get('/api/courses', async (req, res) => {
   try {
@@ -83,13 +96,28 @@ app.get('/api/courses', async (req, res) => {
   }
 })
 
-// 4. Create a new Course
+// 4. Create a new Course and nested COs
 app.post('/api/courses', async (req, res) => {
   try {
-    const { code, name, theoryCredits, practicalCredits, academicClassId } = req.body
+    const { code, name, theoryCredits, practicalCredits, academicClassId, courseOutcomes } = req.body
 
     if (!code || !name) {
       return res.status(400).json({ error: 'Course code and name are required.' })
+    }
+
+    if (!academicClassId) {
+      return res.status(400).json({ error: 'Academic Class is required.' })
+    }
+
+    if (!courseOutcomes || !Array.isArray(courseOutcomes) || courseOutcomes.length < 4 || courseOutcomes.length > 6) {
+      return res.status(400).json({ error: 'Exactly 4 to 6 Course Outcomes are required.' })
+    }
+
+    // Validate CO formats
+    for (const co of courseOutcomes) {
+      if (!co.coNumber || !co.description || co.targetPct == null) {
+        return res.status(400).json({ error: 'Each CO must have a number, description, and target percentage.' })
+      }
     }
 
     // Check for existing course code
@@ -98,19 +126,12 @@ app.post('/api/courses', async (req, res) => {
       return res.status(400).json({ error: `Course with code ${code} already exists.` })
     }
 
-    // Handle class mapping (if none provided, use default)
-    let assignedClassId = academicClassId
-    if (!assignedClassId) {
-      let defaultClass = await prisma.academicClass.findFirst({
-        where: { name: 'Default Batch' }
-      })
-      if (!defaultClass) {
-        defaultClass = await prisma.academicClass.create({
-          data: { name: 'Default Batch' }
-        })
-      }
-      assignedClassId = defaultClass.id
-    }
+    // Map the nested COs for Prisma
+    const coData = courseOutcomes.map(co => ({
+      coNumber: co.coNumber,
+      description: co.description,
+      targetPct: Number(co.targetPct) || 75.0,
+    }))
 
     const newCourse = await prisma.course.create({
       data: {
@@ -118,10 +139,14 @@ app.post('/api/courses', async (req, res) => {
         name,
         theoryCredits: Number(theoryCredits) || 0,
         practicalCredits: Number(practicalCredits) || 0,
-        academicClassId: assignedClassId
+        academicClassId: academicClassId,
+        courseOutcomes: {
+          create: coData
+        }
       },
       include: {
         academicClass: true,
+        courseOutcomes: true,
       }
     })
 

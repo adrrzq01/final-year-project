@@ -62,7 +62,7 @@ export default function Sidebar() {
         <div className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/60 dark:to-violet-950/60 rounded-xl p-3 border border-indigo-100 dark:border-indigo-900/50">
           <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">Academic Year</p>
           <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200 mt-0.5">2025 – 2026</p>
-          <p className="text-xs text-indigo-500 dark:text-indigo-500 mt-0.5">Semester 6 · Active</p>
+          <p className="text-xs text-indigo-500 dark:text-indigo-500 mt-0.5">Semester 1 · Active</p>
         </div>
       </div>
     </aside>

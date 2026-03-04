@@ -17,7 +17,7 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold mt-1">Good morning, Prof. Ahmed! 👋</h2>
           <p className="text-indigo-200 text-sm mt-1">
             {hasData
-              ? 'Semester 6 is active. Here\'s your overview.'
+              ? 'Semester 1 is active. Here\'s your overview.'
               : 'No data yet — add classes and upload marks to get started.'}
           </p>
         </div>

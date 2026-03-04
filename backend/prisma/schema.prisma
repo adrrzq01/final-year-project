@@ -9,7 +9,7 @@ datasource db {
 
 model AcademicClass {
   id        String   @id @default(uuid())
-  name      String   // e.g., "TYBCA"
+  name      String // e.g., "TYBCA"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,15 +30,15 @@ model Student {
 }
 
 model Course {
-  id              String        @id @default(uuid())
-  code            String        @unique // e.g., "CS401"
-  name            String
-  theoryCredits   Int
+  id               String        @id @default(uuid())
+  code             String        @unique // e.g., "CS401"
+  name             String
+  theoryCredits    Int
   practicalCredits Int
-  academicClassId String
-  academicClass   AcademicClass @relation(fields: [academicClassId], references: [id], onDelete: Cascade)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  academicClassId  String
+  academicClass    AcademicClass @relation(fields: [academicClassId], references: [id], onDelete: Cascade)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   courseOutcomes CourseOutcome[]
   exams          Exam[]
@@ -46,9 +46,9 @@ model Course {
 
 model CourseOutcome {
   id          String   @id @default(uuid())
-  coNumber    String   // e.g., "CO1"
+  coNumber    String // e.g., "CO1"
   description String
-  targetPct   Float    // Target threshold e.g., 75.0
+  targetPct   Float // Target threshold e.g., 75.0
   courseId    String
   course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
@@ -61,7 +61,7 @@ model CourseOutcome {
 
 model Exam {
   id         String   @id @default(uuid())
-  name       String   // e.g., "ISA-1", "End-Semester"
+  name       String // e.g., "ISA-1", "End-Semester"
   totalMarks Int
   courseId   String
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -72,19 +72,22 @@ model Exam {
 }
 
 model Question {
-  id              String        @id @default(uuid())
-  qNumber         String        // e.g., "Q1(a)"
-  maxMarks        Int
-  examId          String
-  exam            Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
-  courseOutcomeId String
-  courseOutcome   CourseOutcome @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id       String @id @default(uuid())
+  qNumber  String // e.g., "Q1" or "a"
+  maxMarks Float? // Null for Main Qs
+  examId   String
+  exam     Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  parentQuestionId String?
+  parentQuestion   Question?  @relation("SubQuestions", fields: [parentQuestionId], references: [id], onDelete: Cascade)
+  subQuestions     Question[] @relation("SubQuestions")
+
+  courseOutcomeId String? // Null for Main Qs
+  courseOutcome   CourseOutcome? @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   marks Mark[]
-
-  @@unique([examId, qNumber])
 }
 
 model Mark {
