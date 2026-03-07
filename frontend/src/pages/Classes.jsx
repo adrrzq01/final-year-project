@@ -8,9 +8,15 @@ export default function Classes() {
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [activeDropdown, setActiveDropdown] = useState(null)
 
   useEffect(() => {
     fetchCourses()
+    
+    // Close dropdown on outside click
+    const handleClickOutside = () => setActiveDropdown(null)
+    window.addEventListener('click', handleClickOutside)
+    return () => window.removeEventListener('click', handleClickOutside)
   }, [])
 
   const fetchCourses = async () => {
@@ -26,6 +32,19 @@ export default function Classes() {
 
   const handleCourseAdded = (newCourse) => {
     setCourses(prev => [newCourse, ...prev])
+  }
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm("Are you sure? This will permanently delete the course, exams, and marks associated with it.")) return
+    
+    try {
+      await axios.delete(`http://localhost:5000/api/courses/${courseId}`)
+      setCourses(prev => prev.filter(c => c.id !== courseId))
+      setActiveDropdown(null)
+    } catch (err) {
+      console.error(err)
+      alert(err.response?.data?.error || "Failed to delete course")
+    }
   }
 
   const filtered = courses.filter(
@@ -128,9 +147,40 @@ export default function Classes() {
                     <div className={`text-xs font-bold px-2 py-1 rounded-md bg-white/70 dark:bg-slate-900/50 backdrop-blur-sm shadow-sm ${theme.text}`}>
                       {course.code}
                     </div>
-                    <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                      <MoreVertical size={18} />
-                    </button>
+                    <div className="relative">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setActiveDropdown(activeDropdown === course.id ? null : course.id)
+                        }}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {activeDropdown === course.id && (
+                        <div 
+                          className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1.5 z-20 animate-in fade-in slide-in-from-top-2 duration-200"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button 
+                            className="w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                            onClick={() => {
+                              alert('Edit feature coming soon!')
+                              setActiveDropdown(null)
+                            }}
+                          >
+                            Edit Course
+                          </button>
+                          <button 
+                            className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                            onClick={() => handleDeleteCourse(course.id)}
+                          >
+                            Delete Course
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-3 truncate" title={course.name}>
                     {course.name}

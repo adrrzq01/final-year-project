@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, ChevronDown, FileText } from 'lucide-react'
+import axios from 'axios'
 
 const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
 const coOptions = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5', 'CO6']
@@ -14,10 +15,26 @@ const bloomColor = {
 }
 
 export default function Exams() {
+  const [courses, setCourses] = useState([])
   const [questions, setQuestions] = useState([]) // start empty
+  const [examName, setExamName] = useState('Midterm Exam')
   const [saved, setSaved] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [courseSelected, setCourseSelected] = useState('')
-  const [examSelected, setExamSelected] = useState('')
+
+  useEffect(() => {
+    fetchCourses()
+  }, [])
+
+  const fetchCourses = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/courses')
+      setCourses(res.data)
+      if (res.data.length > 0) setCourseSelected(res.data[0].id)
+    } catch (err) {
+      console.error('Failed to fetch courses:', err)
+    }
+  }
 
   const updateMainQNo = (id, value) => {
     setSaved(false)
@@ -103,6 +120,27 @@ export default function Exams() {
     return acc + q.subQuestions.reduce((sum, sq) => sum + Number(sq.marks || 0), 0)
   }, 0)
 
+  const handleSaveBlueprint = async () => {
+    if (!courseSelected) return alert('Select a course first')
+    if (questions.length === 0) return alert('Add at least one question')
+    
+    setIsSaving(true)
+    try {
+      await axios.post('http://localhost:5000/api/exams/blueprint', {
+        name: examName,
+        courseId: courseSelected,
+        totalMarks: totalMarks,
+        questions: questions
+      })
+      setSaved(true)
+    } catch (err) {
+      console.error(err)
+      alert(err.response?.data?.error || 'Failed to save blueprint')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
       {/* Header */}
@@ -120,10 +158,11 @@ export default function Exams() {
           </button>
           {questions.length > 0 && (
             <button
-              onClick={() => setSaved(true)}
-              className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+              onClick={handleSaveBlueprint}
+              disabled={isSaving}
+              className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-70 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
             >
-              <Save size={15} /> {saved ? 'Saved ✓' : 'Save Blueprint'}
+              <Save size={15} /> {isSaving ? 'Saving...' : saved ? 'Saved ✓' : 'Save Blueprint'}
             </button>
           )}
         </div>
@@ -134,23 +173,29 @@ export default function Exams() {
         <div className="relative">
           <select
             value={courseSelected}
-            onChange={(e) => setCourseSelected(e.target.value)}
-            className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 pl-4 pr-8 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300"
+            onChange={(e) => {
+              setCourseSelected(e.target.value)
+              setSaved(false)
+            }}
+            className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-8 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300"
           >
-            <option value="">— Select Course —</option>
+            <option value="" disabled>Select Course</option>
+            {courses.map(c => (
+              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+            ))}
           </select>
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
-        <div className="relative">
-          <select
-            value={examSelected}
-            onChange={(e) => setExamSelected(e.target.value)}
-            className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 pl-4 pr-8 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300"
-          >
-            <option value="">— Select Exam —</option>
-          </select>
-          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+        
+        <input 
+          value={examName}
+          onChange={e => {
+            setExamName(e.target.value)
+            setSaved(false)
+          }}
+          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-40"
+          placeholder="Exam Name (e.g. ISA-1)"
+        />
         {questions.length > 0 && (
           <div className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl">
             Total Marks: <strong className="text-slate-800 dark:text-slate-200 ml-1 text-sm">{totalMarks}</strong>
