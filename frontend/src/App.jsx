@@ -8,7 +8,13 @@ import Classes from './pages/Classes'
 import Upload from './pages/Upload'
 import Exams from './pages/Exams'
 import MarksEntry from './pages/MarksEntry'
+import POMapping from './pages/POMapping'
+import Survey from './pages/Survey'
+import Reports from './pages/Reports'
 import Login from './pages/Login'
+import AdminDashboard from './pages/AdminDashboard'
+import StudentDashboard from './pages/StudentDashboard'
+import { SemesterProvider } from './context/SemesterContext'
 
 // JWT Auth Guard Component
 const ProtectedRoute = ({ children }) => {
@@ -17,6 +23,18 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />
   }
   return children
+}
+
+// Role-Based Dashboard Router
+const IndexDashboard = () => {
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
+
+  if (user?.role === 'ADMIN') return <AdminDashboard />
+  if (user?.role === 'STUDENT') return <StudentDashboard />
+  
+  // Default to Teacher Dashboard (which handles its own unapproved lock screen)
+  return <Dashboard />
 }
 
 // Protected Layout Container
@@ -35,12 +53,27 @@ const ProtectedLayout = ({ children }) => {
 }
 
 function App() {
-  // Inject saved token into Axios on app load
+  // Inject saved token into Axios on app load & handle 401 expired tokens globally
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
     }
+
+    // Add interceptor to auto-kick user to login if their token naturally expires
+    const interceptor = axios.interceptors.response.use(
+      (res) => res,
+      (error) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+        }
+        return Promise.reject(error)
+      }
+    )
+
+    return () => axios.interceptors.response.eject(interceptor)
   }, [])
 
   return (
@@ -54,16 +87,21 @@ function App() {
           path="/*" 
           element={
             <ProtectedRoute>
-              <ProtectedLayout>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/classes" element={<Classes />} />
-                  <Route path="/upload" element={<Upload />} />
-                  <Route path="/exams" element={<Exams />} />
-                  <Route path="/marks" element={<MarksEntry />} />
-                </Routes>
-              </ProtectedLayout>
+              <SemesterProvider>
+                <ProtectedLayout>
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<IndexDashboard />} />
+                    <Route path="/classes" element={<Classes />} />
+                    <Route path="/upload" element={<Upload />} />
+                    <Route path="/exams" element={<Exams />} />
+                    <Route path="/marks" element={<MarksEntry />} />
+                    <Route path="/mapping" element={<POMapping />} />
+                    <Route path="/survey" element={<Survey />} />
+                    <Route path="/reports" element={<Reports />} />
+                  </Routes>
+                </ProtectedLayout>
+              </SemesterProvider>
             </ProtectedRoute>
           } 
         />

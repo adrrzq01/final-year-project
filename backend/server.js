@@ -1,11 +1,12 @@
 import express from 'express'
 import cors from 'cors'
 import { PrismaClient } from '@prisma/client'
-import { calculateDirectAttainment } from './src/services/attainmentCalculator.js'
+import { calculateAttainment } from './src/services/attainmentCalculator.js'
 
 // Import Auth Service
 import { registerUser, loginUser } from './src/routes/authRoutes.js'
-import { protect, requireAdmin } from './src/middleware/authMiddleware.js'
+import { protect, requireAdmin, requireTeacherOrAdmin } from './src/middleware/authMiddleware.js'
+import bcrypt from 'bcryptjs'
 
 const app = express()
 const prisma = new PrismaClient()
@@ -25,8 +26,32 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Bridgify API is running' })
 })
 
+// Admin Teacher Approval (GET pending)
+app.get('/api/admin/pending-teachers', protect, requireAdmin, async (req, res) => {
+  try {
+    const pending = await prisma.user.findMany({
+      where: { role: 'TEACHER', isApproved: false },
+      select: { id: true, fullName: true, email: true, department: true }
+    });
+    res.json(pending);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch pending teachers.' });
+  }
+});
+
+// Admin Teacher Approval
+app.put('/api/admin/approve-teacher/:id', protect, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.user.update({ where: { id }, data: { isApproved: true } });
+    res.json({ message: 'Teacher approved successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to approve teacher.' });
+  }
+});
+
 // 2. Bulk Upload Students (from CSV)
-app.post('/api/students/bulk-upload', async (req, res) => {
+app.post('/api/students/bulk-upload', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
     const { students } = req.body
 
@@ -117,10 +142,17 @@ app.delete('/api/academic-classes/:id', protect, requireAdmin, async (req, res) 
   }
 })
 
-// 3. Get all Courses
+// 3. Get all Courses (with optional Department & Semester filters)
 app.get('/api/courses', async (req, res) => {
   try {
+    const { department, semester } = req.query
+    
+    const whereClause = {}
+    if (department) whereClause.department = department
+    if (semester) whereClause.semester = parseInt(semester)
+
     const courses = await prisma.course.findMany({
+      where: whereClause,
       include: {
         academicClass: true,
         courseOutcomes: true,
@@ -135,9 +167,9 @@ app.get('/api/courses', async (req, res) => {
 })
 
 // 4. Create a new Course and nested COs
-app.post('/api/courses', async (req, res) => {
+app.post('/api/courses', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
-    const { code, name, theoryCredits, practicalCredits, academicClassId, courseOutcomes } = req.body
+    const { code, name, category, department, semester, theoryCredits, practicalCredits, academicClassId, courseOutcomes } = req.body
 
     if (!code || !name) {
       return res.status(400).json({ error: 'Course code and name are required.' })
@@ -175,6 +207,9 @@ app.post('/api/courses', async (req, res) => {
       data: {
         code,
         name,
+        category: category || 'Major',
+        department: department || 'BCA',
+        semester: semester ? Number(semester) : 1,
         theoryCredits: Number(theoryCredits) || 0,
         practicalCredits: Number(practicalCredits) || 0,
         academicClassId: academicClassId,
@@ -196,15 +231,16 @@ app.post('/api/courses', async (req, res) => {
 })
 
 // 4b. Update a Course (Protected)
-app.put('/api/courses/:id', protect, async (req, res) => {
+app.put('/api/courses/:id', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
     const { id } = req.params
-    const { name, theoryCredits, practicalCredits } = req.body
+    const { name, category, theoryCredits, practicalCredits } = req.body
 
     const updatedCourse = await prisma.course.update({
       where: { id },
       data: {
         name,
+        category,
         theoryCredits: theoryCredits ? Number(theoryCredits) : undefined,
         practicalCredits: practicalCredits ? Number(practicalCredits) : undefined
       }
@@ -217,7 +253,7 @@ app.put('/api/courses/:id', protect, async (req, res) => {
 })
 
 // 4c. Delete a Course (Protected, Cascades Exams/Marks/Questions)
-app.delete('/api/courses/:id', protect, async (req, res) => {
+app.delete('/api/courses/:id', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
     const { id } = req.params
 
@@ -229,6 +265,89 @@ app.delete('/api/courses/:id', protect, async (req, res) => {
   } catch (error) {
     console.error('Delete course error:', error)
     res.status(500).json({ error: 'Failed to delete course. It may not exist.' })
+  }
+})
+
+// 4d. Purge All Courses (DANGEROUS: Clears all DB Data linked to courses)
+app.delete('/api/courses/clear-all', protect, requireAdmin, async (req, res) => {
+  try {
+    await prisma.course.deleteMany({})
+    res.json({ message: 'All courses and cascading OBE data purged successfully.' })
+  } catch (error) {
+    console.error('Purge courses error:', error)
+    res.status(500).json({ error: 'Failed to purge courses.' })
+  }
+})
+
+// 4e. Seed entire BCA Curriculum
+app.post('/api/courses/seed-bca', protect, requireAdmin, async (req, res) => {
+  try {
+    // Requires at least one Academic Class to act as the holder
+    let defaultClass = await prisma.academicClass.findFirst()
+    if (!defaultClass) {
+      defaultClass = await prisma.academicClass.create({ data: { name: 'FYBCA' } })
+    }
+
+    const bcaCourses = [
+      // Semester 1
+      { code: 'CSA-100', name: 'Problem Solving and Programming', category: 'Major', department: 'BCA', semester: 1, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'MAT-111', name: 'Elementary Mathematics', category: 'Minor', department: 'BCA', semester: 1, theoryCredits: 4, practicalCredits: 0 },
+      { code: 'PSY-131', name: 'Psychology of Adjustment', category: 'MC', department: 'BCA', semester: 1, theoryCredits: 3, practicalCredits: 0 },
+      { code: 'ENG-151', name: 'Communicative English: Spoken and Written', category: 'AEC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'CSA-142', name: 'Python Programming', category: 'SEC', department: 'BCA', semester: 1, theoryCredits: 1, practicalCredits: 2 },
+      { code: 'VAC-101', name: 'Environmental Studies II', category: 'VAC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'VAC-108', name: 'Introduction to Folktales of India', category: 'VAC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
+      
+      // Semester 2
+      { code: 'MAT-100', name: 'Foundational Mathematics', category: 'Major', department: 'BCA', semester: 2, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-111', name: 'Computer System Fundamentals', category: 'Minor', department: 'BCA', semester: 2, theoryCredits: 4, practicalCredits: 0 },
+      { code: 'PSY-132', name: 'Environmental Psychology', category: 'MC', department: 'BCA', semester: 2, theoryCredits: 3, practicalCredits: 0 },
+      { code: 'ENG-152', name: 'Digital Content Creation in English', category: 'AEC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'CSA-143', name: 'Data Analytics Using Spreadsheets', category: 'SEC', department: 'BCA', semester: 2, theoryCredits: 1, practicalCredits: 2 },
+      { code: 'VAC-111', name: 'E-Waste Management', category: 'VAC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'VAC-117', name: 'Youth Empowerment using Mind Mapping', category: 'VAC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
+      
+      // Semester 3
+      { code: 'CSA-200', name: 'Data Structures', category: 'Major', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-201', name: 'Database Management Systems', category: 'Major', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-211', name: 'Reasoning Techniques', category: 'Minor', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'PSY-231', name: 'Relationship Psychology', category: 'MC', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 0 },
+      { code: 'HIN-251', name: 'सम्प्रेषण कौशल (Communication Skill)', category: 'AEC', department: 'BCA', semester: 3, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'CSA-241', name: 'Multimedia Applications', category: 'SEC', department: 'BCA', semester: 3, theoryCredits: 1, practicalCredits: 2 },
+
+      // Semester 4
+      { code: 'CSA-202', name: 'Web App Development', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 1, practicalCredits: 3 },
+      { code: 'CSA-203', name: 'Agile Methodologies', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-204', name: 'Object Oriented Concepts', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-205', name: 'Web Technology', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'CSA-221', name: 'Digital Marketing Fundamentals', category: 'Minor', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'HIN-252', name: 'संभाषण कला (Sambhashan kala)', category: 'AEC', department: 'BCA', semester: 4, theoryCredits: 2, practicalCredits: 0 },
+
+      // Semester 5
+      { code: 'CSA-300', name: 'UI- UX Design', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-301', name: 'Full Stack Development', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 1, practicalCredits: 3 },
+      { code: 'CSA-302', name: 'Cloud Computing', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-303', name: 'Internet Technologies', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 2, practicalCredits: 0 },
+      { code: 'CSA-321', name: '(Internship) (VET)', category: 'Minor', department: 'BCA', semester: 5, theoryCredits: 4, practicalCredits: 0 },
+      { code: 'CSA-361', name: '(Summer Internship)', category: 'I', department: 'BCA', semester: 5, theoryCredits: 2, practicalCredits: 0 },
+
+      // Semester 6
+      { code: 'CSA-304', name: 'Cyber Security', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-305', name: 'Mobile App Development', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 1, practicalCredits: 3 },
+      { code: 'CSA-306', name: 'Machine Learning', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
+      { code: 'CSA-307', name: 'Project', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 4, practicalCredits: 0 },
+      { code: 'CSA-322', name: 'Social Media Marketing & Analytics (VET)', category: 'Minor', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
+    ]
+
+    const seededRecords = await prisma.course.createMany({
+      data: bcaCourses.map(c => ({ ...c, academicClassId: defaultClass.id })),
+      skipDuplicates: true
+    })
+
+    res.json({ message: 'Successfully seeded the entire BCA curriculum.', seededCount: seededRecords.count })
+  } catch (error) {
+    console.error('Seed BCA courses error:', error)
+    res.status(500).json({ error: 'Failed to execute the BCA curriculum seed script.' })
   }
 })
 
@@ -259,7 +378,7 @@ app.get('/api/exams', async (req, res) => {
 })
 
 // 6. Create Exam Blueprint (Main + Sub questions)
-app.post('/api/exams/blueprint', async (req, res) => {
+app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
     const { name, courseId, totalMarks, questions } = req.body
 
@@ -313,7 +432,7 @@ app.post('/api/exams/blueprint', async (req, res) => {
 })
 
 // 7. Mass Upsert Marks
-app.post('/api/marks', async (req, res) => {
+app.post('/api/marks', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
     const { marks } = req.body
 
@@ -357,7 +476,7 @@ app.get('/api/reports/attainment/:courseId', async (req, res) => {
     const { courseId } = req.params
     if (!courseId) return res.status(400).json({ error: 'Course ID missing' })
 
-    const attainmentData = await calculateDirectAttainment(courseId)
+    const attainmentData = await calculateAttainment(courseId)
     
     res.json({
       courseId,
@@ -370,6 +489,300 @@ app.get('/api/reports/attainment/:courseId', async (req, res) => {
   }
 })
 
+// 9. Detailed Grid Report Endpoint (For Excel-like rendered table)
+app.get('/api/reports/detailed/:courseId', async (req, res) => {
+  try {
+    const { courseId } = req.params
+    
+    // Fetch Course & Enrolled Students
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        academicClass: {
+          include: {
+            students: { orderBy: { rollNo: 'asc' } }
+          }
+        }
+      }
+    })
+    
+    if (!course) return res.status(404).json({ error: 'Course not found' })
+    const students = course.academicClass.students
+
+    // Fetch all exams logically tied to course, including nested questions & marks
+    const exams = await prisma.exam.findMany({
+      where: { courseId },
+      include: {
+        questions: {
+          include: {
+            subQuestions: {
+              include: { marks: true, courseOutcome: true }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    // Prepare arrays
+    const flatQuestions = []
+    const marksGrid = {} // studentId -> { questionId -> obtainedMarks }
+    const calculations = {} // questionId -> { threshold, passedCount, passPct, level, co }
+    const totalStudentsCount = students.length
+
+    // Initialize student matrix
+    students.forEach(s => { marksGrid[s.id] = {} })
+
+    // Process questions
+    exams.forEach(exam => {
+      exam.questions.forEach(mainQ => {
+        mainQ.subQuestions.forEach(subQ => {
+          flatQuestions.push({
+            id: subQ.id,
+            label: `${exam.name} - ${mainQ.qNumber}${subQ.qNumber}`,
+            maxMarks: subQ.maxMarks
+          })
+
+          const thresholdMark = subQ.maxMarks * 0.40
+          let passedCount = 0
+
+          subQ.marks.forEach(markRecord => {
+            // Fill student grid cell
+            if (marksGrid[markRecord.studentId]) {
+              marksGrid[markRecord.studentId][subQ.id] = markRecord.obtainedMarks
+            }
+            // Math calculate pass logic
+            if (markRecord.obtainedMarks >= thresholdMark) {
+               passedCount++
+            }
+          })
+
+          const passPct = totalStudentsCount > 0 ? (passedCount / totalStudentsCount) * 100 : 0
+          
+          let level = 0
+          if (passPct > 70) level = 3
+          else if (passPct > 60) level = 2
+          else if (passPct >= 50) level = 1
+
+          calculations[subQ.id] = {
+            thresholdMark,
+            passedCount,
+            passPct: passPct.toFixed(2),
+            level,
+            co: subQ.courseOutcome?.coNumber || 'N/A'
+          }
+        })
+      })
+    })
+
+    res.json({
+      courseDetails: { code: course.code, name: course.name, category: course.category },
+      students: students.map(s => ({ id: s.id, rollNo: s.rollNo, name: s.name })),
+      questions: flatQuestions,
+      marksGrid,
+      calculations
+    })
+
+  } catch (error) {
+    console.error('Detailed Report Error:', error)
+    res.status(500).json({ error: 'Failed to aggregate detailed grid calculation data.' })
+  }
+})
+
+// 10. Master Dashboard Analytics (Protected)
+app.get('/api/dashboard', protect, async (req, res) => {
+  try {
+    // 1. Get exact active entities count
+    const totalStudents = await prisma.student.count()
+    const activeCourses = await prisma.course.count()
+
+    // 2. Fetch all courses logically to run the mass attainment engine
+    const courses = await prisma.course.findMany({ select: { id: true, name: true } })
+    
+    let totalAssessedCOs = 0
+    let sumOfAllFinalCOLevels = 0
+    let targetMetCount = 0
+
+    // Compute institution-wide Recharts data map per Course
+    const chartData = []
+
+    for (const course of courses) {
+      try {
+        const result = await calculateAttainment(course.id)
+        
+        let courseCoTotalLevel = 0
+        let courseAssessedCos = 0
+
+        result.coAttainment.forEach(co => {
+          if (co.timesAssessed > 0) {
+            courseAssessedCos++
+            totalAssessedCOs++
+            sumOfAllFinalCOLevels += co.finalAttainmentLevel
+            courseCoTotalLevel += co.finalAttainmentLevel
+            
+            // Check if they met their target percent physically based on Direct %
+            if (co.directAttainmentPercentage >= co.targetThresholdPct) {
+              targetMetCount++
+            }
+          }
+        })
+
+        if (courseAssessedCos > 0) {
+          const avgLevel = courseCoTotalLevel / courseAssessedCos
+          chartData.push({
+            name: course.name.substring(0, 15) + (course.name.length > 15 ? '...' : ''), // truncate long names
+            Attainment: Number(avgLevel.toFixed(2)),
+            Target: 2.0 // Institution standard baseline
+          })
+        }
+      } catch (err) {
+        // Skip courses without logical attainment footprints
+        console.warn(`Dashboard aggregation warning for Course ${course.id}:`, err.message)
+      }
+    }
+
+    // 3. Mathematical Global Averages
+    const avgCoAttainment = totalAssessedCOs > 0 ? (sumOfAllFinalCOLevels / totalAssessedCOs) : 0
+
+    // Construct Recharts Payload
+    res.json({
+      stats: [
+        { title: 'Total Students', value: totalStudents },
+        { title: 'Active Courses', value: activeCourses },
+        { title: 'Avg CO Attainment', value: `${avgCoAttainment.toFixed(2)} / 3.0` },
+        { title: 'COs Meeting Target', value: targetMetCount }
+      ],
+      chartData: chartData
+    })
+  } catch (error) {
+    console.error('Dashboard aggregation error:', error)
+    res.status(500).json({ error: 'Failed to aggregate dashboard analytics' })
+  }
+})
+
+
+// 10. Fetch Program Outcomes & PSOs
+app.get('/api/pos', protect, async (req, res) => {
+  try {
+    const pos = await prisma.programOutcome.findMany({ orderBy: { code: 'asc' } })
+    const psos = await prisma.programSpecificOutcome.findMany({ orderBy: { code: 'asc' } })
+    
+    // Custom sort to ensure PO1 comes before PO10
+    const sortOutcomes = (outcomes) => {
+      return outcomes.sort((a, b) => {
+        const numA = parseInt(a.code.replace(/\D/g, ''))
+        const numB = parseInt(b.code.replace(/\D/g, ''))
+        return numA - numB
+      })
+    }
+    
+    res.json({
+      pos: sortOutcomes(pos),
+      psos: sortOutcomes(psos)
+    })
+  } catch (error) {
+    console.error('Fetch POs error:', error)
+    res.status(500).json({ error: 'Failed to fetch program outcomes.' })
+  }
+})
+
+// 11. Fetch Existing CO-PO Mappings for a Course
+app.get('/api/mappings/:courseId', protect, async (req, res) => {
+  try {
+    const { courseId } = req.params
+    
+    // We fetch the COs for this course and include their specific coPoMappings
+    const courseOutcomes = await prisma.courseOutcome.findMany({
+      where: { courseId },
+      include: { coPoMappings: true },
+      orderBy: { coNumber: 'asc' }
+    })
+    
+    res.json(courseOutcomes)
+  } catch (error) {
+    console.error('Fetch mappings error:', error)
+    res.status(500).json({ error: 'Failed to fetch existing mappings.' })
+  }
+})
+
+// 12. Save CO-PO Mappings (Mass Upsert)
+app.post('/api/mappings', protect, requireTeacherOrAdmin, async (req, res) => {
+  try {
+    const { mappings } = req.body
+    
+    if (!mappings || !Array.isArray(mappings)) {
+      return res.status(400).json({ error: 'A valid mappings array is required.' })
+    }
+
+    // mappings expected shape: [{ courseOutcomeId, programOutcomeId, correlationLevel }]
+    const upsertPromises = mappings.map((entry) => 
+      prisma.cO_PO_Mapping.upsert({
+        where: {
+          courseOutcomeId_programOutcomeId: {
+            courseOutcomeId: entry.courseOutcomeId,
+            programOutcomeId: entry.programOutcomeId
+          }
+        },
+        update: {
+          correlationLevel: entry.correlationLevel
+        },
+        create: {
+          courseOutcomeId: entry.courseOutcomeId,
+          programOutcomeId: entry.programOutcomeId,
+          correlationLevel: entry.correlationLevel
+        }
+      })
+    )
+
+    await prisma.$transaction(upsertPromises)
+
+    res.json({ message: 'Mappings successfully saved!', count: mappings.length })
+  } catch (error) {
+    console.error('Save mappings error:', error)
+    res.status(500).json({ error: 'Failed to securely save mappings.' })
+  }
+})
+
+
+// 13. Save Course Exit Surveys (Mass Upsert)
+app.post('/api/surveys', protect, async (req, res) => {
+  try {
+    const { surveys } = req.body
+    
+    if (!surveys || !Array.isArray(surveys)) {
+      return res.status(400).json({ error: 'A valid survey responses array is required.' })
+    }
+
+    // Survey expected shape: [{ studentId, courseId, courseOutcomeId, rating }]
+    // We strictly use the unique compound key studentId_courseOutcomeId
+    const upsertPromises = surveys.map((entry) => 
+      prisma.courseExitSurvey.upsert({
+        where: {
+          studentId_courseOutcomeId: {
+            studentId: entry.studentId,
+            courseOutcomeId: entry.courseOutcomeId
+          }
+        },
+        update: {
+          rating: entry.rating
+        },
+        create: {
+          studentId: entry.studentId,
+          courseId: entry.courseId,
+          courseOutcomeId: entry.courseOutcomeId,
+          rating: entry.rating
+        }
+      })
+    )
+
+    await prisma.$transaction(upsertPromises)
+
+    res.json({ message: 'Survey successfully captured!', count: surveys.length })
+  } catch (error) {
+    console.error('Save survey error:', error)
+    res.status(500).json({ error: 'Failed to securely save survey responses.' })
+  }
+})
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -379,6 +792,58 @@ app.use((err, req, res, next) => {
 
 // --- Server Startup ---
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => {
+
+const bootstrapClasses = async () => {
+  try {
+    const classes = [
+      'FYBCA', 'SYBCA', 'TYBCA',
+      'FYBA', 'SYBA', 'TYBA',
+      'FYBCOM', 'SYBCOM', 'TYBCOM',
+      'FYBBA', 'SYBBA', 'TYBBA'
+    ]
+    for (const className of classes) {
+      const existing = await prisma.academicClass.findFirst({ where: { name: className } })
+      if (!existing) {
+        await prisma.academicClass.create({ data: { name: className } })
+      }
+    }
+    console.log('✅ Default Academic Classes Seeded');
+  } catch(e) {
+    console.warn("Could not bootstrap classes:", e.message)
+  }
+}
+
+const bootstrapDefaultUsers = async () => {
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash('password123', salt);
+
+    // Admin
+    await prisma.user.upsert({
+      where: { email: 'admin@bridgify.com' },
+      update: {},
+      create: { fullName: 'System Admin', email: 'admin@bridgify.com', password: hashedPassword, role: 'ADMIN', department: 'IT', isApproved: true }
+    });
+    // Teacher
+    await prisma.user.upsert({
+      where: { email: 'teacher@bridgify.com' },
+      update: {},
+      create: { fullName: 'Demo Teacher', email: 'teacher@bridgify.com', password: hashedPassword, role: 'TEACHER', department: 'BCA', isApproved: true }
+    });
+    // Student
+    await prisma.user.upsert({
+      where: { email: 'student@bridgify.com' },
+      update: {},
+      create: { fullName: 'Demo Student', email: 'student@bridgify.com', password: hashedPassword, role: 'STUDENT', department: 'BCA', rollNo: '101', className: 'FYBCA', division: 'A' }
+    });
+    console.log('✅ Default RBAC Users Seeded (admin, teacher, student)');
+  } catch(e) {
+    console.warn("Could not bootstrap users:", e.message)
+  }
+}
+
+app.listen(PORT, async () => {
   console.log(`✅ Server running on http://localhost:${PORT}`)
+  await bootstrapClasses()
+  await bootstrapDefaultUsers()
 })

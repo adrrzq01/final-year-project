@@ -10,14 +10,26 @@ datasource db {
 enum Role {
   ADMIN
   TEACHER
+  STUDENT
 }
 
 model User {
   id        String   @id @default(uuid())
-  name      String
   email     String   @unique
   password  String
+  fullName  String
+  department String  // BCA, BA, BCOM, BBA
+  phoneNo   String?
   role      Role     @default(TEACHER)
+  
+  // Teacher Specific
+  isApproved Boolean @default(false)
+  
+  // Student Specific
+  rollNo    String?  @unique
+  className String?
+  division  String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -41,13 +53,17 @@ model Student {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  marks Mark[]
+  marks             Mark[]
+  courseExitSurveys CourseExitSurvey[]
 }
 
 model Course {
   id               String        @id @default(uuid())
   code             String        @unique // e.g., "CS401"
   name             String
+  category         String        @default("Major")
+  department       String        @default("BCA")
+  semester         Int           @default(1)
   theoryCredits    Int
   practicalCredits Int
   academicClassId  String
@@ -55,8 +71,9 @@ model Course {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  courseOutcomes CourseOutcome[]
-  exams          Exam[]
+  courseOutcomes    CourseOutcome[]
+  exams             Exam[]
+  courseExitSurveys CourseExitSurvey[]
 }
 
 model CourseOutcome {
@@ -69,7 +86,9 @@ model CourseOutcome {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  questions Question[]
+  questions         Question[]
+  coPoMappings      CO_PO_Mapping[]
+  courseExitSurveys CourseExitSurvey[]
 
   @@unique([courseId, coNumber])
 }
@@ -116,4 +135,50 @@ model Mark {
   updatedAt     DateTime @updatedAt
 
   @@unique([studentId, questionId])
+}
+
+model ProgramOutcome {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g., "PO1"
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  coPoMappings CO_PO_Mapping[]
+}
+
+model ProgramSpecificOutcome {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g., "PSO1"
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CO_PO_Mapping {
+  id               String         @id @default(uuid())
+  correlationLevel Int // 1 (Low), 2 (Medium), 3 (High)
+  courseOutcomeId  String
+  courseOutcome    CourseOutcome  @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  programOutcomeId String
+  programOutcome   ProgramOutcome @relation(fields: [programOutcomeId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([courseOutcomeId, programOutcomeId])
+}
+
+model CourseExitSurvey {
+  id              String        @id @default(uuid())
+  rating          Int // 1-3 rating by the student
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId        String
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseOutcomeId String
+  courseOutcome   CourseOutcome @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([studentId, courseOutcomeId])
 }

@@ -8,10 +8,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_super_secret_bridgify_key
 // User Registration Route (Public initially to bootstrap)
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body
+    const { fullName, email, password, role, department, phoneNo, rollNo, className, division } = req.body
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required' })
+    if (!fullName || !email || !password || !role || !department) {
+      return res.status(400).json({ error: 'Full Name, email, password, role, and department are required' })
+    }
+
+    if (role === 'STUDENT' && (!rollNo || !className || !division)) {
+       return res.status(400).json({ error: 'Students must provide Roll No, Class, and Division' })
     }
 
     // Check if user exists
@@ -27,10 +31,16 @@ export const registerUser = async (req, res) => {
     // Create User
     const newUser = await prisma.user.create({
       data: {
-        name,
+        fullName,
         email,
         password: hashedPassword,
-        role: role || 'TEACHER' // Default to teacher
+        role: role,
+        department,
+        phoneNo,
+        isApproved: role === 'TEACHER' ? false : true, // Auto-approve non-teachers for now (Admin/Student)
+        rollNo: role === 'STUDENT' ? rollNo : null,
+        className: role === 'STUDENT' ? className : null,
+        division: role === 'STUDENT' ? division : null
       }
     })
 

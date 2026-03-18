@@ -53,17 +53,32 @@ export default function Topbar() {
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">0</span>
         </button>
 
-        {/* Avatar */}
-        <button className="flex items-center gap-2.5 pl-3 pr-4 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all group">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow">
-            PA
+        {/* Avatar with Logout Dropdown */}
+        <div className="relative group">
+          <button className="flex items-center gap-2.5 pl-3 pr-4 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow">
+              PA
+            </div>
+            <div className="hidden md:block text-left">
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">Prof. Ahmed</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Faculty</p>
+            </div>
+            <ChevronDown size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+          </button>
+          
+          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-right">
+            <button 
+              onClick={() => {
+                localStorage.removeItem('token')
+                localStorage.removeItem('user')
+                window.location.href = '/login'
+              }}
+              className="w-full text-left px-4 py-2 text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+            >
+              Sign Out
+            </button>
           </div>
-          <div className="hidden md:block text-left">
-            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">Prof. Ahmed</p>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Faculty</p>
-          </div>
-          <ChevronDown size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
-        </button>
+        </div>
       </div>
     </header>
   )

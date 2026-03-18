@@ -25,7 +25,7 @@ const CustomTooltip = ({ active, payload, label }) => {
                             />
                             {entry.name}
                         </span>
-                        <span className="font-bold text-slate-800">{entry.value}%</span>
+                        <span className="font-bold text-slate-800">{entry.value} Level</span>
                     </div>
                 ))}
             </div>
@@ -45,17 +45,17 @@ export default function AttainmentChart({ data }) {
             >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis
-                    dataKey="co"
+                    dataKey="name"
                     tick={{ fontSize: 12, fontWeight: 600, fill: '#64748b' }}
                     axisLine={false}
                     tickLine={false}
                 />
                 <YAxis
-                    domain={[0, 100]}
+                    domain={[0, 3]}
                     tick={{ fontSize: 11, fill: '#94a3b8' }}
                     axisLine={false}
                     tickLine={false}
-                    tickFormatter={(v) => `${v}%`}
+                    tickFormatter={(v) => `${v.toFixed(1)}`}
                 />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
                 <Legend
@@ -63,24 +63,24 @@ export default function AttainmentChart({ data }) {
                     iconType="circle"
                     iconSize={8}
                 />
-                <ReferenceLine y={75} stroke="#e2e8f0" strokeDasharray="4 4" />
+                <ReferenceLine y={2.0} stroke="#e2e8f0" strokeDasharray="4 4" />
                 <Bar
-                    dataKey="target"
-                    name="Target Attainment"
+                    dataKey="Target"
+                    name="Target Level (2.0)"
                     fill="#e0e7ff"
                     stroke="#6366f1"
                     strokeWidth={1.5}
                     radius={[6, 6, 0, 0]}
                 />
                 <Bar
-                    dataKey="actual"
-                    name="Actual Attainment"
+                    dataKey="Attainment"
+                    name="Actual Level"
                     radius={[6, 6, 0, 0]}
                 >
                     {data.map((entry, index) => (
                         <Cell
                             key={`cell-${index}`}
-                            fill={entry.actual >= entry.target ? '#10b981' : '#f59e0b'}
+                            fill={entry.Attainment >= entry.Target ? '#10b981' : '#f59e0b'}
                         />
                     ))}
                 </Bar>

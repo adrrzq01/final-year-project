@@ -1,14 +1,30 @@
+
 import { useState, useEffect } from 'react'
-import { Search, Plus, BookOpen, Users, MoreVertical } from 'lucide-react'
+import { 
+  Users, BookOpen, Search, Plus, ListFilter, Trash2, Edit2, ChevronDown, CheckCircle2, ShieldAlert,
+  Database, MoreVertical
+} from 'lucide-react'
 import axios from 'axios'
 import AddCourseModal from '../components/AddCourseModal'
+import { useSemester } from '../context/SemesterContext'
 
 export default function Classes() {
-  const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
+  
+  // Filtering States
+  const [selectedDepartment, setSelectedDepartment] = useState('BCA')
+  const { activeSemester: selectedSemester, setActiveSemester: setSelectedSemester } = useSemester()
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Data states
   const [courses, setCourses] = useState([])
+  const [filteredCourses, setFilteredCourses] = useState([])
   const [loading, setLoading] = useState(true)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false) // Renamed from isModalOpen
   const [activeDropdown, setActiveDropdown] = useState(null)
+  
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
 
   useEffect(() => {
     fetchCourses()
@@ -17,29 +33,62 @@ export default function Classes() {
     const handleClickOutside = () => setActiveDropdown(null)
     window.addEventListener('click', handleClickOutside)
     return () => window.removeEventListener('click', handleClickOutside)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDepartment, selectedSemester])
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/courses')
+      setLoading(true)
+      setError('')
+      // Pass filters to backend if BCA is selected
+      const queryParams = new URLSearchParams()
+      if (selectedDepartment) queryParams.append('department', selectedDepartment)
+      if (selectedDepartment === 'BCA' && selectedSemester) {
+        queryParams.append('semester', selectedSemester)
+      }
+
+      const currentToken = localStorage.getItem('token')
+      const config = { headers: { Authorization: `Bearer ${currentToken}` } }
+
+      const res = await axios.get(`http://localhost:5000/api/courses?${queryParams.toString()}`, config)
       setCourses(res.data)
+      setFilteredCourses(res.data) // Initialize filteredCourses with all courses
     } catch (err) {
-      console.error('Failed to fetch courses:', err)
+      console.error('Failed to load courses', err)
+      setError('Failed to connect to the server or retrieve courses.')
     } finally {
       setLoading(false)
     }
   }
 
+  const handleSearch = (query) => {
+    setSearchQuery(query)
+    if (query) {
+      const lowercasedQuery = query.toLowerCase()
+      const filtered = courses.filter(
+        (c) =>
+          c.name.toLowerCase().includes(lowercasedQuery) ||
+          c.code.toLowerCase().includes(lowercasedQuery)
+      )
+      setFilteredCourses(filtered)
+    } else {
+      setFilteredCourses(courses) // If search is empty, show all courses
+    }
+  }
+
   const handleCourseAdded = (newCourse) => {
     setCourses(prev => [newCourse, ...prev])
+    setFilteredCourses(prev => [newCourse, ...prev]) // Also update filtered list
   }
 
   const handleDeleteCourse = async (courseId) => {
     if (!window.confirm("Are you sure? This will permanently delete the course, exams, and marks associated with it.")) return
     
     try {
-      await axios.delete(`http://localhost:5000/api/courses/${courseId}`)
+      const currentToken = localStorage.getItem('token')
+      await axios.delete(`http://localhost:5000/api/courses/${courseId}`, { headers: { Authorization: `Bearer ${currentToken}` } })
       setCourses(prev => prev.filter(c => c.id !== courseId))
+      setFilteredCourses(prev => prev.filter(c => c.id !== courseId)) // Also update filtered list
       setActiveDropdown(null)
     } catch (err) {
       console.error(err)
@@ -47,11 +96,33 @@ export default function Classes() {
     }
   }
 
-  const filtered = courses.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.code.toLowerCase().includes(search.toLowerCase())
-  )
+  const handlePurgeAll = async () => {
+    if (!window.confirm("Are you absolutely sure you want to purge ALL data? This action cannot be undone.")) return
+    try {
+      const currentToken = localStorage.getItem('token')
+      await axios.delete('http://localhost:5000/api/courses/clear-all', { headers: { Authorization: `Bearer ${currentToken}` } })
+      setCourses([])
+      setFilteredCourses([])
+      alert('All data purged successfully!')
+    } catch (err) {
+      console.error('Failed to purge data:', err)
+      alert(err.response?.data?.error || "Failed to purge data.")
+    }
+  }
+
+  const handleSeedBca = async () => {
+    if (!window.confirm("Are you sure you want to seed BCA data? This will add 36 BCA courses.")) return
+    try {
+       const currentToken = localStorage.getItem('token')
+       const config = { headers: { Authorization: `Bearer ${currentToken}` } }
+      await axios.post('http://localhost:5000/api/courses/seed-bca', {}, config)
+      fetchCourses() // Re-fetch courses to show seeded data
+      alert('BCA data seeded successfully!')
+    } catch (err) {
+      console.error('Failed to seed BCA data:', err)
+      alert(err.response?.data?.error || "Failed to seed BCA data.")
+    }
+  }
 
   // Array of tailwind color combinations for cards
   const themeColors = [
@@ -65,34 +136,91 @@ export default function Classes() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header & Global Actions */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Classes & Courses</h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Manage your registered courses</p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <BookOpen size={22} className="text-indigo-600 dark:text-indigo-400" />
+            Curriculum Structure
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage and track course outcomes across departments and semesters.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
-        >
-          <Plus size={16} />
-          Add Course
-        </button>
+        
+        {user?.role === 'ADMIN' && (
+          <div className="flex items-center gap-3">
+             <button 
+                onClick={handlePurgeAll}
+                className="flex items-center gap-2 bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 px-4 py-2.5 rounded-xl hover:bg-rose-200 dark:hover:bg-rose-900/60 font-semibold text-sm transition-all"
+                title="Wipe database clean of all Courses"
+             >
+                <Trash2 size={18} /> Purge All Data
+             </button>
+             <button 
+                onClick={handleSeedBca}
+                className="flex items-center gap-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-4 py-2.5 rounded-xl hover:bg-emerald-200 dark:hover:bg-emerald-900/60 font-semibold text-sm transition-all shadow-sm shadow-emerald-200 dark:shadow-none"
+             >
+                <Database size={18} /> Seed 36 BCA Courses
+             </button>
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl hover:bg-indigo-700 font-semibold text-sm transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+            >
+              <Plus size={18} /> Add Individual Course
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          id="classes-search"
-          name="classesSearch"
-          aria-label="Search classes by code or name"
-          type="text"
-          placeholder="Search by code or name…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder-slate-400 dark:text-slate-200 transition-colors duration-300"
-        />
+      {/* Main Filters Toolbar */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-200 dark:border-slate-700/60 flex flex-col md:flex-row gap-4">
+        
+        {/* Department Filter */}
+        <div className="flex-1 max-w-[200px]">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Department</label>
+          <select 
+            value={selectedDepartment}
+            onChange={e => setSelectedDepartment(e.target.value)}
+            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
+          >
+            <option value="BCA">BCA (Bachelors in Comp Apps)</option>
+            <option value="BCOM">BCOM (Bachelors in Commerce)</option>
+            <option value="BA">BA (Bachelors in Arts)</option>
+            <option value="BBA">BBA (Bachelors in Business)</option>
+          </select>
+        </div>
+
+        {/* Semester Filter (Only if BCA) */}
+        {true /* Always show Semester */ && (
+          <div className="flex-1 max-w-[150px] animate-in fade-in slide-in-from-left-2 duration-300">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Semester</label>
+            <select 
+              value={selectedSemester}
+              onChange={e => setSelectedSemester(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
+            >
+              <option value="1">Semester 1</option>
+              <option value="2">Semester 2</option>
+              <option value="3">Semester 3</option>
+              <option value="4">Semester 4</option>
+              <option value="5">Semester 5</option>
+              <option value="6">Semester 6</option>
+            </select>
+          </div>
+        )}
+
+        {/* Existing Search bar */}
+        <div className="flex-1 flex flex-col justify-end">
+           <div className="relative group">
+             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+             <input 
+               type="text"
+               placeholder="Search by course code or name..."
+               value={searchQuery}
+               onChange={(e) => handleSearch(e.target.value)}
+               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm transition-all dark:text-slate-100 placeholder:text-slate-400 font-medium"
+             />
+           </div>
+        </div>
       </div>
 
       {/* State rendering */}
@@ -103,22 +231,32 @@ export default function Classes() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/30 transition-colors duration-300">
+          <ShieldAlert size={34} className="text-red-500 dark:text-red-400 mb-5" />
+          <h3 className="text-lg font-bold text-red-700 dark:text-red-300">
+            Error Loading Courses
+          </h3>
+          <p className="text-sm text-red-500 dark:text-red-400 mt-2 text-center max-w-sm">
+            {error}
+          </p>
+        </div>
+      ) : filteredCourses.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 transition-colors duration-300">
           <div className="w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-5">
             <BookOpen size={34} className="text-indigo-400 dark:text-indigo-500" />
           </div>
           <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-            {search ? 'No matches found' : 'No courses yet'}
+            {searchQuery ? 'No matches found' : 'No courses yet'}
           </h3>
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 text-center max-w-sm">
-            {search 
-              ? 'Try changing your search keywords.'
-              : <span>Click <strong className="text-indigo-600 dark:text-indigo-400">Add Course</strong> above to register your first class.</span>}
+            {searchQuery 
+              ? 'Try changing your search keywords or filter options.'
+              : <span>Click <strong className="text-indigo-600 dark:text-indigo-400">Add Individual Course</strong> above to register your first class.</span>}
           </p>
-          {!search && (
+          {!searchQuery && (
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => setIsAddModalOpen(true)}
               className="mt-6 flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
             >
               <Plus size={16} />
@@ -128,7 +266,7 @@ export default function Classes() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((course, index) => {
+          {filteredCourses.map((course, index) => {
             const theme = themeColors[index % themeColors.length]
             const totalCredits = course.theoryCredits + course.practicalCredits
             
@@ -225,8 +363,8 @@ export default function Classes() {
 
       {/* Modal */}
       <AddCourseModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+        isOpen={isAddModalOpen} 
+        onClose={() => setIsAddModalOpen(false)} 
         onCourseAdded={handleCourseAdded} 
       />
     </div>

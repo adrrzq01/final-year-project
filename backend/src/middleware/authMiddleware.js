@@ -6,6 +6,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_super_secret_bridgify_key
 export const protect = async (req, res, next) => {
   let token
 
+  console.log(`[AUTH CHECK] Method: ${req.method} | URL: ${req.originalUrl || req.url}`)
+  console.log(`[AUTH CHECK] Incoming Auth Header:`, req.headers.authorization)
+
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
       // Extract token from header "Bearer <token>"
@@ -33,5 +36,14 @@ export const requireAdmin = (req, res, next) => {
     next()
   } else {
     res.status(403).json({ error: 'Access forbidden: Admin clearance required' })
+  }
+}
+
+// Middleware to strictly block students from writing data
+export const requireTeacherOrAdmin = (req, res, next) => {
+  if (req.user && (req.user.role === 'ADMIN' || req.user.role === 'TEACHER')) {
+    next()
+  } else {
+    res.status(403).json({ error: 'Access forbidden: Students cannot modify core records' })
   }
 }

@@ -6,6 +6,9 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
   const [formData, setFormData] = useState({
     code: '',
     name: '',
+    category: 'Major',
+    department: 'BCA',
+    semester: 1,
     theoryCredits: 3,
     practicalCredits: 1,
     academicClassId: ''
@@ -31,7 +34,9 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
 
   const fetchClasses = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/academic-classes')
+      const currentToken = localStorage.getItem('token')
+      const config = { headers: { Authorization: `Bearer ${currentToken}` } }
+      const res = await axios.get('http://localhost:5000/api/academic-classes', config)
       setAcademicClasses(res.data)
       if (res.data.length > 0) {
         setFormData(prev => ({...prev, academicClassId: res.data[0].id}))
@@ -40,6 +45,14 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
       console.error('Failed to fetch academic classes:', err)
     }
   }
+
+  const filteredClasses = academicClasses.filter(ac => ac.name.endsWith(formData.department))
+
+  useEffect(() => {
+    if (filteredClasses.length > 0 && !filteredClasses.find(c => c.id === formData.academicClassId)) {
+      setFormData(prev => ({ ...prev, academicClassId: filteredClasses[0].id }))
+    }
+  }, [formData.department, academicClasses])
 
   if (!isOpen) return null
 
@@ -85,11 +98,13 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
         ...formData,
         courseOutcomes
       }
-      const res = await axios.post('http://localhost:5000/api/courses', payload)
+      const currentToken = localStorage.getItem('token')
+      const config = { headers: { Authorization: `Bearer ${currentToken}` } }
+      const res = await axios.post('http://localhost:5000/api/courses', payload, config)
       onCourseAdded(res.data)
       
       // Reset form on success
-      setFormData({ code: '', name: '', theoryCredits: 3, practicalCredits: 1, academicClassId: academicClasses[0]?.id || '' })
+      setFormData({ code: '', name: '', category: 'Major', department: 'BCA', semester: 1, theoryCredits: 3, practicalCredits: 1, academicClassId: academicClasses[0]?.id || '' })
       setCourseOutcomes([
         { coNumber: 'CO1', description: '', targetPct: 75 },
         { coNumber: 'CO2', description: '', targetPct: 75 },
@@ -148,13 +163,29 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
                   className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all font-semibold"
                 >
                   <option value="" disabled>Select a Class</option>
-                  {academicClasses.map(ac => (
+                  {filteredClasses.map(ac => (
                     <option key={ac.id} value={ac.id}>{ac.name}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
+                <div className="col-span-1 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Category</label>
+                  <select 
+                    required
+                    value={formData.category}
+                    onChange={e => setFormData({...formData, category: e.target.value})}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all font-semibold"
+                  >
+                    <option value="Major">Major</option>
+                    <option value="Minor">Minor</option>
+                    <option value="MC">MC</option>
+                    <option value="AEC">AEC</option>
+                    <option value="SEC">SEC</option>
+                    <option value="VAC">VAC</option>
+                  </select>
+                </div>
                 <div className="col-span-1 space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Code</label>
                   <input 
@@ -177,7 +208,7 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Theory Credits</label>
                   <input 
@@ -195,6 +226,31 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
                     onChange={e => setFormData({...formData, practicalCredits: parseInt(e.target.value)})}
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all"
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Department</label>
+                  <select 
+                    required
+                    value={formData.department}
+                    onChange={e => setFormData({...formData, department: e.target.value})}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all"
+                  >
+                    <option value="BCA">BCA</option>
+                    <option value="BCOM">BCOM</option>
+                    <option value="BA">BA</option>
+                    <option value="BBA">BBA</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Semester</label>
+                  <select 
+                    required
+                    value={formData.semester}
+                    onChange={e => setFormData({...formData, semester: parseInt(e.target.value)})}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all"
+                  >
+                    {[1,2,3,4,5,6].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
               </div>
             </div>
