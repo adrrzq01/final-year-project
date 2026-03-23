@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, ChevronDown, FileText } from 'lucide-react'
 import axios from 'axios'
 
@@ -14,10 +14,17 @@ const bloomColor = {
   Create: 'bg-rose-50 dark:bg-rose-900/40 text-rose-500 dark:text-rose-300',
 }
 
+const examTypes = [
+  { name: 'ISA-1', label: 'ISA 1', target: 15 },
+  { name: 'ISA-2', label: 'ISA 2', target: 15 },
+  { name: 'ISA-3', label: 'ISA 3', target: 15 },
+  { name: 'SEE', label: 'SEE', target: 85 }
+]
+
 export default function Exams() {
   const [courses, setCourses] = useState([])
   const [questions, setQuestions] = useState([]) // start empty
-  const [examName, setExamName] = useState('Midterm Exam')
+  const [examType, setExamType] = useState('ISA-1')
   const [saved, setSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [courseSelected, setCourseSelected] = useState('')
@@ -120,14 +127,18 @@ export default function Exams() {
     return acc + q.subQuestions.reduce((sum, sq) => sum + Number(sq.marks || 0), 0)
   }, 0)
 
+  const currentTarget = examTypes.find(t => t.name === examType)?.target || 15
+  const isMarksValid = totalMarks === currentTarget
+
   const handleSaveBlueprint = async () => {
     if (!courseSelected) return alert('Select a course first')
     if (questions.length === 0) return alert('Add at least one question')
+    if (!isMarksValid) return alert(`Total marks must be exactly ${currentTarget} for ${examType}. Currently at ${totalMarks}.`)
     
     setIsSaving(true)
     try {
       await axios.post('http://localhost:5000/api/exams/blueprint', {
-        name: examName,
+        name: examType,
         courseId: courseSelected,
         totalMarks: totalMarks,
         questions: questions
@@ -159,8 +170,12 @@ export default function Exams() {
           {questions.length > 0 && (
             <button
               onClick={handleSaveBlueprint}
-              disabled={isSaving}
-              className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-70 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+              disabled={isSaving || !isMarksValid}
+              className={`flex items-center gap-2 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md ${
+                !isMarksValid 
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 shadow-none'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200 dark:shadow-indigo-900/30 disabled:opacity-70'
+              }`}
             >
               <Save size={15} /> {isSaving ? 'Saving...' : saved ? 'Saved ✓' : 'Save Blueprint'}
             </button>
@@ -187,18 +202,29 @@ export default function Exams() {
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
         
-        <input 
-          value={examName}
-          onChange={e => {
-            setExamName(e.target.value)
-            setSaved(false)
-          }}
-          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-40"
-          placeholder="Exam Name (e.g. ISA-1)"
-        />
+        <div className="relative">
+          <select 
+            value={examType}
+            onChange={e => {
+              setExamType(e.target.value)
+              setSaved(false)
+            }}
+            className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-8 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer min-w-40 transition-colors duration-300"
+          >
+            {examTypes.map(type => (
+              <option key={type.name} value={type.name}>{type.label}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
         {questions.length > 0 && (
-          <div className="ml-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl">
-            Total Marks: <strong className="text-slate-800 dark:text-slate-200 ml-1 text-sm">{totalMarks}</strong>
+          <div className={`ml-auto flex items-center gap-2 text-xs font-bold border px-3 py-2 rounded-xl transition-colors ${
+            isMarksValid 
+              ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+              : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
+          }`}>
+            Total Marks: <span className="text-sm ml-1">{totalMarks} / {currentTarget}</span>
           </div>
         )}
       </div>

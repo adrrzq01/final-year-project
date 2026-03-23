@@ -88,6 +88,7 @@ model CourseOutcome {
 
   questions         Question[]
   coPoMappings      CO_PO_Mapping[]
+  coPsoMappings     CO_PSO_Mapping[]
   courseExitSurveys CourseExitSurvey[]
 
   @@unique([courseId, coNumber])
@@ -153,6 +154,8 @@ model ProgramSpecificOutcome {
   description String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  coPsoMappings CO_PSO_Mapping[]
 }
 
 model CO_PO_Mapping {
@@ -166,6 +169,19 @@ model CO_PO_Mapping {
   updatedAt        DateTime       @updatedAt
 
   @@unique([courseOutcomeId, programOutcomeId])
+}
+
+model CO_PSO_Mapping {
+  id                       String                 @id @default(uuid())
+  correlationLevel         Int                    // 1 (Low), 2 (Medium), 3 (High)
+  courseOutcomeId          String
+  courseOutcome            CourseOutcome          @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+  programSpecificOutcomeId String
+  programSpecificOutcome   ProgramSpecificOutcome @relation(fields: [programSpecificOutcomeId], references: [id], onDelete: Cascade)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@unique([courseOutcomeId, programSpecificOutcomeId])
 }
 
 model CourseExitSurvey {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { ChevronDown, Save, RotateCcw, Download, Table2 } from 'lucide-react'
 import axios from 'axios'
 
@@ -16,7 +16,7 @@ export default function MarksEntry() {
   const [marksData, setMarksData] = useState({})
   
   const [isSaving, setIsSaving] = useState(false)
-  const [isLoadingGrid, setIsLoadingGrid] = useState(false)
+  const [loadingGrid, setLoadingGrid] = useState(false)
 
   // 1. Fetch Courses on Mount
   useEffect(() => {
@@ -25,14 +25,15 @@ export default function MarksEntry() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/courses')
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      const res = await axios.get('http://localhost:5000/api/courses', config)
       setCourses(res.data)
     } catch (err) {
       console.error('Failed to fetch courses:', err)
     }
   }
 
-  // 2. Fetch Exams and Students when a Course is selected
+  // 2. Fetch Aggregated Course Data (Students + Nested Blueprints)
   useEffect(() => {
     if (!courseSelected) {
       setExams([])
@@ -42,44 +43,45 @@ export default function MarksEntry() {
       return
     }
 
-    const fetchCourseData = async () => {
+    const fetchCourseGridData = async () => {
       try {
-        // Fetch Exams for this specific course
-        const examRes = await axios.get(`http://localhost:5000/api/exams?courseId=${courseSelected}`)
-        setExams(examRes.data)
+        setLoadingGrid(true)
+        const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        const { data } = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams`, config)
         
-        // Fetch the Academic Class details connected to this course to get the Students
-        const courseObj = courses.find(c => c.id === courseSelected)
-        if (courseObj?.academicClassId) {
-          // We need a route or we can just fetch students by academicClassId.
-          // For now, let's assume we build a new /api/students endpoint or we fetch via classes.
-          const stuRes = await axios.get(`http://localhost:5000/api/students?classId=${courseObj.academicClassId}`)
-          setStudents(stuRes.data)
+        setStudents(data.students || [])
+        setExams(data.exams || [])
+        // Pre-select first exam if available to save clicks
+        if (data.exams && data.exams.length > 0) {
+          setExamSelected(data.exams[0].id)
+        } else {
+          setExamSelected('')
         }
       } catch (err) {
-        console.error('Error fetching exams or students', err)
+        console.error('Error fetching enrollments/exams:', err)
+      } finally {
+        setLoadingGrid(false)
       }
     }
 
-    fetchCourseData()
-  }, [courseSelected, courses])
+    fetchCourseGridData()
+  }, [courseSelected])
 
-  // 3. Build the X-Axis (SubQuestions) when an Exam is selected
+  // 3. Build the X-Axis (SubQuestions) dynamically
   useEffect(() => {
-    if (!examSelected) {
+    if (!examSelected || exams.length === 0) {
       setSubQuestions([])
       return
     }
 
     const exam = exams.find(e => e.id === examSelected)
     if (exam && exam.questions) {
-      // Flatten out the subQuestions from all main questions into a single array for the X-axis columns
       let subs = []
       exam.questions.forEach(mainQ => {
         mainQ.subQuestions.forEach(sq => {
           subs.push({
             id: sq.id,
-            label: `${mainQ.qNumber}${sq.qNumber}`, // e.g. "Q1a"
+            label: `${mainQ.qNumber}${sq.qNumber}`,
             maxMarks: sq.maxMarks
           })
         })
@@ -89,7 +91,16 @@ export default function MarksEntry() {
   }, [examSelected, exams])
 
   // Handlers
-  const handleMarkChange = (studentId, subQId, value) => {
+  const handleMarkChange = (studentId, subQId, value, maxMarks) => {
+    const numValue = Number(value)
+    
+    // Strict Input Validation Ceilings
+    if (numValue > maxMarks) {
+      alert(`Invalid Score: The maximum marks allowed for this specific sub-question is ${maxMarks}.`)
+      return
+    }
+    if (numValue < 0) return
+
     setMarksData(prev => ({
       ...prev,
       [`${studentId}-${subQId}`]: value
@@ -101,7 +112,7 @@ export default function MarksEntry() {
     
     setIsSaving(true)
     
-    // Transform flat dictionary into array of objects for the backend
+    // Transform dict to array
     const payload = Object.entries(marksData).map(([key, obtainedMarks]) => {
       const [studentId, questionId] = key.split('-')
       return {
@@ -112,8 +123,9 @@ export default function MarksEntry() {
     })
 
     try {
-      await axios.post('http://localhost:5000/api/marks', { marks: payload })
-      alert('Marks saved successfully!')
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await axios.post('http://localhost:5000/api/marks', { marks: payload }, config)
+      alert('Marks successfully bulk upserted to the database!')
     } catch (err) {
       console.error(err)
       alert('Failed to save marks')
@@ -123,135 +135,150 @@ export default function MarksEntry() {
   }
 
   const handleReset = () => {
-    if (confirm('Are you sure you want to clear all currently entered marks on this screen?')) {
+    if (window.confirm('Are you sure you want to clear all currently entered marks on this screen?')) {
       setMarksData({})
     }
   }
 
-
   return (
-    <div className="space-y-5 max-w-full pb-12">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-full pb-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Marks Entry</h2>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Enter and edit student marks directly in the grid</p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Marks Entry Spreadsheets</h2>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">Cross-reference active student rosters with structured Exam Blueprints</p>
         </div>
-        <div className="flex items-center gap-2.5">
-          <button onClick={handleReset} className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all">
-            <RotateCcw size={14} /> Reset
+        <div className="flex items-center gap-3">
+          <button onClick={handleReset} className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm">
+            <RotateCcw size={15} /> Reset
           </button>
-          <button className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 px-3.5 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all">
-            <Download size={14} /> Export
+          <button className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm">
+            <Download size={15} /> Export
           </button>
           <button 
             onClick={handleSaveMarks}
             disabled={isSaving || subQuestions.length === 0}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+            className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
           >
-            <Save size={14} /> {isSaving ? 'Saving...' : 'Save Marks'}
+            <Save size={16} /> {isSaving ? 'Syncing...' : 'Save Matrix'}
           </button>
         </div>
       </div>
 
-      {/* Selectors */}
-      <div className="flex items-center flex-wrap gap-3 p-4 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-        <div className="relative">
+      <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <div className="relative w-full sm:w-auto min-w-[240px]">
           <select
             value={courseSelected}
             onChange={(e) => setCourseSelected(e.target.value)}
-            className="appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300 min-w-[200px]"
+            className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300"
           >
-            <option value="">— Select Course —</option>
+            <option value="">— Select Target Course —</option>
             {courses.map(c => (
               <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
             ))}
           </select>
-          <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
-        <div className="relative">
+
+        <div className="relative w-full sm:w-auto min-w-[240px]">
           <select
             value={examSelected}
             onChange={(e) => setExamSelected(e.target.value)}
             disabled={!courseSelected || exams.length === 0}
-            className="appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300 disabled:opacity-50 min-w-[200px]"
+            className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300 disabled:opacity-50"
           >
-            <option value="">— Select Exam —</option>
+            <option value="">— Extract Exam Blueprint —</option>
             {exams.map(e => (
               <option key={e.id} value={e.id}>{e.name} (Max {e.totalMarks})</option>
             ))}
           </select>
-          <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
         
         {subQuestions.length > 0 && (
-          <div className="ml-auto text-xs font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
-            {subQuestions.length} Questions Loaded
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs font-bold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
+              {students.length} Students
+            </span>
+            <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-800">
+              {subQuestions.length} Questions
+            </span>
           </div>
         )}
       </div>
 
-      {/* Grid or Empty State */}
-      {students.length === 0 || subQuestions.length === 0 ? (
+      {loadingGrid && (
+        <div className="py-20 flex justify-center text-indigo-500 animate-pulse font-semibold">
+          Synchronizing Academic Registries...
+        </div>
+      )}
+
+      {!loadingGrid && (students.length === 0 || subQuestions.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 transition-colors duration-300">
-          <div className="w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-5">
-            <Table2 size={34} className="text-indigo-400 dark:text-indigo-500" />
+          <div className="w-20 h-20 rounded-3xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-6 shadow-sm">
+            <Table2 size={36} className="text-indigo-500 dark:text-indigo-400" />
           </div>
-          <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">No Assessment Data Ready</h3>
-          <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 text-center max-w-md">
-            To view the entry grid, please ensure you have selected a <strong>Course</strong> that has enrolled students, and an <strong>Exam</strong> that has a configured blueprint.
+          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">Grid Uninitialized</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 text-center max-w-md leading-relaxed">
+            Ensure you have completely mapped the <strong>Exam Blueprint</strong> and verified that the <strong>Student Roster</strong> is populated for your department.
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden transition-colors duration-300">
-          <div className="overflow-x-auto">
+        <div className="bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-colors duration-300">
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800 border-b-2 border-slate-200 dark:border-slate-700">
-                  <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-800 text-left px-5 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[200px] border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                    Student Information
+                <tr className="bg-slate-50 dark:bg-slate-900 border-b-2 border-slate-200 dark:border-slate-700">
+                  <th className="sticky left-0 z-20 bg-slate-50 dark:bg-slate-900 text-left px-5 py-4 text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest min-w-[220px] border-r border-slate-200 dark:border-slate-700 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
+                    Enrolled Student
                   </th>
                   {subQuestions.map(sq => (
-                    <th key={sq.id} className="text-center px-3 py-3 text-xs font-bold text-slate-600 dark:text-slate-300 border-r border-slate-200 dark:border-slate-700/50 min-w-[70px]">
-                      <div className="text-lg text-slate-800 dark:text-slate-100">{sq.label}</div>
-                      <div className="text-[10px] text-slate-400 font-medium mt-0.5">Max: {sq.maxMarks}</div>
+                    <th key={sq.id} className="text-center px-2 py-3 border-r border-slate-200 dark:border-slate-700 min-w-[70px]">
+                      <div className="text-[13px] font-black text-slate-800 dark:text-slate-200">{sq.label}</div>
+                      <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold mt-1 bg-slate-100 dark:bg-slate-800 rounded px-1 py-0.5 inline-block border border-slate-200 dark:border-slate-700">Max {sq.maxMarks}</div>
                     </th>
                   ))}
-                  <th className="px-5 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right bg-slate-50 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                    Total
+                  <th className="px-5 py-4 text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-right bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_10px_-4px_rgba(0,0,0,0.1)]">
+                    Score
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
-                {students.map((student, i) => {
-                  // Calculate local row total physically present in the state right now
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                {students.map((student) => {
                   const rowTotal = subQuestions.reduce((sum, sq) => {
                     return sum + Number(marksData[`${student.id}-${sq.id}`] || 0)
                   }, 0)
 
                   return (
-                    <tr key={student.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors group">
-                      <td className="sticky left-0 z-10 bg-white dark:bg-slate-800 group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/40 px-5 py-3 border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] transition-colors">
-                        <div className="font-bold text-slate-800 dark:text-slate-200">{student.rollNo}</div>
-                        <div className="text-xs text-slate-500 font-medium truncate w-[180px]" title={student.name}>{student.name}</div>
+                    <tr key={student.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group">
+                      <td className="sticky left-0 z-10 bg-white dark:bg-slate-800/90 group-hover:bg-indigo-50/90 dark:group-hover:bg-slate-800 px-5 py-3 border-r border-slate-200 dark:border-slate-700 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] transition-colors">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">{student.rollNo}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold truncate w-[190px]" title={student.name}>{student.name}</div>
                       </td>
                       
-                      {subQuestions.map(sq => (
-                        <td key={sq.id} className="px-2 py-2 text-center border-r border-slate-100 dark:border-slate-700/30">
-                          <input
-                            type="number"
-                            min="0"
-                            max={sq.maxMarks}
-                            step="0.5"
-                            value={marksData[`${student.id}-${sq.id}`] || ''}
-                            onChange={(e) => handleMarkChange(student.id, sq.id, e.target.value)}
-                            className="w-16 text-center text-sm font-semibold text-slate-800 dark:text-slate-200 bg-transparent border-b-2 border-transparent focus:border-indigo-500 focus:bg-indigo-50 dark:focus:bg-indigo-900/20 focus:outline-none transition-all py-1 placeholder-slate-300 dark:placeholder-slate-600"
-                            placeholder="-"
-                          />
-                        </td>
-                      ))}
+                      {subQuestions.map(sq => {
+                        const cellVal = marksData[`${student.id}-${sq.id}`] || ''
+                        const isInvalid = Number(cellVal) > sq.maxMarks
+                        return (
+                          <td key={sq.id} className={`px-1 py-1 text-center border-r border-slate-100 dark:border-slate-700/50 ${isInvalid ? 'bg-rose-50 dark:bg-rose-900/20' : ''}`}>
+                            <input
+                              type="number"
+                              min="0"
+                              max={sq.maxMarks}
+                              step="0.5"
+                              value={cellVal}
+                              onChange={(e) => handleMarkChange(student.id, sq.id, e.target.value, sq.maxMarks)}
+                              className={`w-14 text-center text-[13px] font-bold bg-transparent border-b-2 focus:outline-none transition-all py-1 rounded-sm
+                                ${isInvalid 
+                                  ? 'text-rose-600 border-rose-400 focus:bg-rose-100 dark:focus:bg-rose-900/40' 
+                                  : 'text-slate-800 dark:text-slate-200 border-transparent focus:border-indigo-500 focus:bg-indigo-100 dark:focus:bg-indigo-900/40 placeholder-slate-300 dark:placeholder-slate-600'
+                                }`}
+                              placeholder="-"
+                            />
+                          </td>
+                        )
+                      })}
 
-                      <td className="px-5 py-3 text-right bg-slate-50/50 dark:bg-slate-900/20 border-l border-slate-200 dark:border-slate-700 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)] font-bold text-slate-800 dark:text-slate-200">
+                      <td className="px-5 py-3 text-right bg-slate-50/50 dark:bg-slate-900/30 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_10px_-4px_rgba(0,0,0,0.05)] font-black text-slate-900 dark:text-slate-100 text-[13px]">
                         {rowTotal}
                       </td>
                     </tr>

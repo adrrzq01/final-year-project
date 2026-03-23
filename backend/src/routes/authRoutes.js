@@ -37,7 +37,7 @@ export const registerUser = async (req, res) => {
         role: role,
         department,
         phoneNo,
-        isApproved: role === 'TEACHER' ? false : true, // Auto-approve non-teachers for now (Admin/Student)
+        isApproved: role === 'ADMIN' ? true : false, // Strictly force false for TEACHER and STUDENT
         rollNo: role === 'STUDENT' ? rollNo : null,
         className: role === 'STUDENT' ? className : null,
         division: role === 'STUDENT' ? division : null

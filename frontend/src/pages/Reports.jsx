@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { FileSpreadsheet, Loader2, Download, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { FileSpreadsheet, Loader2, Download, AlertCircle, Printer } from 'lucide-react'
 import axios from 'axios'
 
 export default function Reports() {
@@ -8,11 +8,13 @@ export default function Reports() {
   const [reportData, setReportData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const printRef = useRef(null)
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/courses')
+        const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        const res = await axios.get('http://localhost:5000/api/courses', config)
         setCourses(res.data)
       } catch (err) {
         console.error('Failed to load courses', err)
@@ -33,7 +35,8 @@ export default function Reports() {
     setLoading(true)
     setError('')
     try {
-      const res = await axios.get(`http://localhost:5000/api/reports/detailed/${selectedCourseId}`)
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      const res = await axios.get(`http://localhost:5000/api/reports/detailed/${selectedCourseId}`, config)
       setReportData(res.data)
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report data')
@@ -91,6 +94,103 @@ export default function Reports() {
     a.click()
   }
 
+  const handlePrintPDF = () => {
+    if (!reportData) return
+
+    const printContent = printRef.current
+    if (!printContent) return
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Please allow pop-ups for PDF export.')
+      return
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>OBE Attainment Report — ${reportData.courseDetails.code}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1e293b; }
+          .report-header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #334155; padding-bottom: 16px; }
+          .report-header h1 { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+          .report-header p { font-size: 11px; color: #64748b; }
+          .report-meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 11px; color: #475569; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th, td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: center; }
+          th { background: #f1f5f9; font-weight: 700; color: #334155; }
+          .sticky-col { text-align: left; font-weight: 600; }
+          .max-marks-row th { background: #ecfdf5; color: #059669; font-size: 9px; }
+          .footer-row td { background: #f0fdf4; font-weight: 700; }
+          .level-row td { background: #dcfce7; font-weight: 900; font-size: 13px; }
+          .pass-mark { color: #059669; }
+          .fail-mark { color: #94a3b8; }
+          .report-footer { margin-top: 20px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+          @media print { body { padding: 10px; } }
+        </style>
+      </head>
+      <body>
+        <div class="report-header">
+          <h1>Bridgify — OBE Attainment Report</h1>
+          <p>${reportData.courseDetails.code} — ${reportData.courseDetails.name}</p>
+        </div>
+        <div class="report-meta">
+          <span>Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          <span>Students: ${reportData.students.length} | Questions: ${reportData.questions.length}</span>
+        </div>
+        <table>
+          <thead>
+            <tr class="max-marks-row">
+              <th colspan="2" style="text-align:right;">Max Marks</th>
+              ${reportData.questions.map(q => `<th>${q.maxMarks}</th>`).join('')}
+            </tr>
+            <tr>
+              <th class="sticky-col" style="min-width:80px;">Roll No</th>
+              <th class="sticky-col" style="min-width:140px;">Name</th>
+              ${reportData.questions.map(q => `<th>${q.label}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${reportData.students.map(student => {
+              const cells = reportData.questions.map(q => {
+                const mark = reportData.marksGrid[student.id]?.[q.id]
+                const threshold = reportData.calculations[q.id]?.thresholdMark || 0
+                const isPass = mark >= threshold
+                return `<td class="${mark !== undefined && mark !== null ? (isPass ? 'pass-mark' : 'fail-mark') : ''}">${mark !== undefined && mark !== null ? mark : '-'}</td>`
+              }).join('')
+              return `<tr><td class="sticky-col">${student.rollNo}</td><td class="sticky-col">${student.name}</td>${cells}</tr>`
+            }).join('')}
+            <tr><td colspan="${reportData.questions.length + 2}" style="height:8px;background:#f8fafc;"></td></tr>
+            <tr class="footer-row">
+              <td colspan="2" style="text-align:right;">Students ≥ 40% Threshold</td>
+              ${reportData.questions.map(q => `<td>${reportData.calculations[q.id]?.passedCount || 0}</td>`).join('')}
+            </tr>
+            <tr class="footer-row">
+              <td colspan="2" style="text-align:right;">% of Students Passed</td>
+              ${reportData.questions.map(q => `<td>${reportData.calculations[q.id]?.passPct || 0}%</td>`).join('')}
+            </tr>
+            <tr class="level-row">
+              <td colspan="2" style="text-align:right;">Attainment Level (0-3)</td>
+              ${reportData.questions.map(q => `<td>${reportData.calculations[q.id]?.level || 0}</td>`).join('')}
+            </tr>
+          </tbody>
+        </table>
+        <div class="report-footer">
+          This report was auto-generated by Bridgify OBE Platform. For official accreditation use only.
+        </div>
+      </body>
+      </html>
+    `)
+
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => {
+      printWindow.print()
+    }, 400)
+  }
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto pb-10">
       
@@ -126,7 +226,7 @@ export default function Reports() {
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl flex items-start gap-3 text-sm font-medium bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-900/30 dark:border-rose-800/50 dark:text-rose-400">
+        <div className="p-4 rounded-xl flex items-start gap-3 text-sm font-medium bg-rose-50 border border-rose-200 text-rose-600 dark:bg-rose-900/30 dark:border-rose-800/50 dark:text-rose-400">
           <AlertCircle size={18} className="shrink-0 mt-0.5" />
           <p>{error}</p>
         </div>
@@ -144,20 +244,29 @@ export default function Reports() {
             <Loader2 className="animate-spin text-emerald-500" size={32} />
           </div>
       ) : reportData ? (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm animate-in fade-in">
+        <div ref={printRef} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm animate-in fade-in">
           
-          <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50">
              <div>
                 <h3 className="font-bold text-slate-800 dark:text-slate-200 tracking-tight">
                    {reportData.courseDetails.code} — {reportData.courseDetails.name}
                 </h3>
+                <p className="text-xs text-slate-400 mt-0.5">{reportData.students.length} students · {reportData.questions.length} questions</p>
              </div>
-             <button 
-                onClick={handleDownloadCSV}
-                className="flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors"
-             >
-                <Download size={16} /> Export to CSV
-             </button>
+             <div className="flex items-center gap-2">
+               <button 
+                  onClick={handlePrintPDF}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-sm"
+               >
+                  <Printer size={16} /> Export to PDF
+               </button>
+               <button 
+                  onClick={handleDownloadCSV}
+                  className="flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-800 active:scale-95 transition-all shadow-sm"
+               >
+                  <Download size={16} /> Export to CSV
+               </button>
+             </div>
           </div>
 
           <div className="overflow-x-auto">

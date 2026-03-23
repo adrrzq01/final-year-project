@@ -1,71 +1,154 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { ShieldCheck, UserCheck, AlertCircle, Loader2 } from 'lucide-react'
+import { ShieldCheck, UserCheck, AlertCircle, Loader2, GraduationCap, Users, BookOpen, TrendingUp, Award } from 'lucide-react'
+import StatCard from '../components/StatCard'
+import AttainmentChart from '../components/AttainmentChart'
 
 export default function AdminDashboard() {
-  const [teachers, setTeachers] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('TEACHER')
+
+  // Analytics state
+  const [analyticsData, setAnalyticsData] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
   useEffect(() => {
-    fetchPendingTeachers()
+    fetchPendingUsers()
+    fetchAnalytics()
   }, [])
 
-  const fetchPendingTeachers = async () => {
+  const fetchPendingUsers = async () => {
     try {
       setLoading(true)
-      // We need a route to fetch unapproved teachers, but for now we'll fetch all users and filter
-      // Alternatively, we should build a quick backend route if it doesn't exist.
-      // Let's assume we build a quick GET /api/admin/pending-teachers or just fetch all users.
-      // For simplicity in this step, I'll fetch `/api/users` if we had it. Since we don't, I will use a dummy state or assume we'll add the endpoint next.
-      
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      const res = await axios.get('http://localhost:5000/api/admin/pending-teachers', config)
-      setTeachers(res.data)
+      const res = await axios.get('http://localhost:5000/api/admin/pending-users', config)
+      setUsers(res.data)
     } catch (err) {
       console.error(err)
-      setError('Failed to load pending teachers. Endpoint may not exist yet.')
+      setError('Failed to load pending users.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleApprove = async (id) => {
+  const fetchAnalytics = async () => {
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      await axios.put(`http://localhost:5000/api/admin/approve-teacher/${id}`, {}, config)
-      setTeachers(prev => prev.filter(t => t.id !== id))
-      alert('Teacher approved successfully!')
+      const res = await axios.get('http://localhost:5000/api/dashboard', config)
+      setAnalyticsData(res.data)
     } catch (err) {
-      alert('Failed to approve teacher')
+      console.error('Analytics fetch skipped:', err.message)
+    } finally {
+      setAnalyticsLoading(false)
     }
   }
 
+  const handleApprove = async (id, isTeacher) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await axios.put(`http://localhost:5000/api/admin/approve-user/${id}`, {}, config)
+      setUsers(prev => prev.filter(u => u.id !== id))
+      alert(`${isTeacher ? 'Teacher' : 'Student'} approved successfully!`)
+    } catch (err) {
+      alert(`Failed to approve ${isTeacher ? 'teacher' : 'student'}`)
+    }
+  }
+
+  const pendingTeachers = users.filter(u => u.role === 'TEACHER')
+  const pendingStudents = users.filter(u => u.role === 'STUDENT')
+  const currentList = activeTab === 'TEACHER' ? pendingTeachers : pendingStudents
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <ShieldCheck size={22} className="text-indigo-600 dark:text-indigo-400" />
             Admin Master Control
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage system access and approve faculty registrations.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">System analytics, access management, and unified registrations.</p>
         </div>
       </div>
 
+      {/* Analytics Summary */}
+      {analyticsLoading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="animate-spin text-indigo-500" size={24} />
+        </div>
+      ) : analyticsData ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard title="Total Students" value={analyticsData.stats[0]?.value || 0} subtitle="All departments" icon={Users} color="indigo" />
+            <StatCard title="Active Courses" value={analyticsData.stats[1]?.value || 0} subtitle="Current semester" icon={BookOpen} color="violet" />
+            <StatCard title="Avg CO Attainment" value={analyticsData.stats[2]?.value || '0.00 / 3.0'} subtitle="Institution wide" icon={TrendingUp} color="emerald" />
+            <StatCard title="COs Meeting Target" value={analyticsData.stats[3]?.value || 0} subtitle="Secured outcomes" icon={Award} color="amber" />
+          </div>
+
+          {analyticsData.chartData && analyticsData.chartData.length > 0 && (
+            <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-6 shadow-sm">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Institution-Wide CO Attainment</h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Target Level (2.0) vs Actual — All Active Courses</p>
+              </div>
+              <AttainmentChart data={analyticsData.chartData} />
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {/* Pending Users Section */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700/60 transition-colors duration-300">
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <UserCheck size={18} className="text-emerald-500" />
-          Pending Faculty Approvals
-        </h3>
+        
+        {/* Tab Header */}
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 border-b border-slate-200 dark:border-slate-700/60 pb-4">
+           <button 
+             onClick={() => setActiveTab('TEACHER')}
+             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all focus:outline-none ${
+               activeTab === 'TEACHER' 
+                 ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
+                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+             }`}
+           >
+             <UserCheck size={18} />
+             Pending Faculty
+             {pendingTeachers.length > 0 && (
+               <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 px-2 py-0.5 rounded-md text-xs ml-1">
+                 {pendingTeachers.length}
+               </span>
+             )}
+           </button>
+           <button 
+             onClick={() => setActiveTab('STUDENT')}
+             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all focus:outline-none ${
+               activeTab === 'STUDENT' 
+                 ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
+                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+             }`}
+           >
+             <GraduationCap size={18} />
+             Pending Students
+             {pendingStudents.length > 0 && (
+               <span className="bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 px-2 py-0.5 rounded-md text-xs ml-1">
+                 {pendingStudents.length}
+               </span>
+             )}
+           </button>
+        </div>
 
         {loading ? (
            <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-500" /></div>
         ) : error ? (
            <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-sm font-medium"><AlertCircle size={16}/> {error}</div>
-        ) : teachers.length === 0 ? (
-           <div className="text-center p-8 text-slate-500 dark:text-slate-400 text-sm bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-             No pending teacher approvals at this time.
+        ) : currentList.length === 0 ? (
+           <div className="text-center p-10 flex flex-col items-center gap-3 text-slate-500 dark:text-slate-400 text-sm bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+             <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm">
+               <ShieldCheck size={24} className="text-emerald-500" />
+             </div>
+             <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
+             <p className="text-xs">No pending {activeTab.toLowerCase()} approvals at this time.</p>
            </div>
         ) : (
           <div className="overflow-x-auto">
@@ -75,23 +158,32 @@ export default function AdminDashboard() {
                   <th className="px-4 py-3 rounded-tl-xl">Full Name</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Department</th>
+                  <th className="px-4 py-3">Identifier</th>
                   <th className="px-4 py-3 rounded-tr-xl">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
-                {teachers.map(teacher => (
-                  <tr key={teacher.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-4 py-3 font-medium">{teacher.fullName}</td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{teacher.email}</td>
+                {currentList.map(user => (
+                  <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3 font-medium flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                        {user.fullName.charAt(0)}
+                      </div>
+                      {user.fullName}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{user.email}</td>
                     <td className="px-4 py-3">
-                      <span className="bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded text-xs font-bold">
-                        {teacher.department}
+                      <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold">
+                        {user.department}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">
+                       {activeTab === 'STUDENT' ? `Roll: ${user.rollNo || 'N/A'}` : 'Faculty ID'}
                     </td>
                     <td className="px-4 py-3">
                       <button 
-                        onClick={() => handleApprove(teacher.id)}
-                        className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                        onClick={() => handleApprove(user.id, activeTab === 'TEACHER')}
+                        className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
                       >
                         Approve Access
                       </button>

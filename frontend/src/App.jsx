@@ -14,6 +14,7 @@ import Reports from './pages/Reports'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
 import StudentDashboard from './pages/StudentDashboard'
+import PendingVerification from './pages/PendingVerification'
 import { SemesterProvider } from './context/SemesterContext'
 
 // JWT Auth Guard Component
@@ -39,6 +40,13 @@ const IndexDashboard = () => {
 
 // Protected Layout Container
 const ProtectedLayout = ({ children }) => {
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
+
+  if (user && user.role !== 'ADMIN' && user.isApproved === false) {
+    return <PendingVerification />
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 overflow-hidden">
       <Sidebar />

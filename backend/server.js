@@ -26,27 +26,27 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Bridgify API is running' })
 })
 
-// Admin Teacher Approval (GET pending)
-app.get('/api/admin/pending-teachers', protect, requireAdmin, async (req, res) => {
+// Admin Approvals (GET pending)
+app.get('/api/admin/pending-users', protect, requireAdmin, async (req, res) => {
   try {
     const pending = await prisma.user.findMany({
-      where: { role: 'TEACHER', isApproved: false },
-      select: { id: true, fullName: true, email: true, department: true }
+      where: { role: { in: ['TEACHER', 'STUDENT'] }, isApproved: false },
+      select: { id: true, fullName: true, email: true, department: true, role: true, rollNo: true }
     });
     res.json(pending);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch pending teachers.' });
+    res.status(500).json({ error: 'Failed to fetch pending users.' });
   }
 });
 
-// Admin Teacher Approval
-app.put('/api/admin/approve-teacher/:id', protect, requireAdmin, async (req, res) => {
+// Admin Approval
+app.put('/api/admin/approve-user/:id', protect, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.user.update({ where: { id }, data: { isApproved: true } });
-    res.json({ message: 'Teacher approved successfully.' });
+    res.json({ message: 'User approved successfully.' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to approve teacher.' });
+    res.status(500).json({ error: 'Failed to approve user.' });
   }
 });
 
@@ -386,48 +386,153 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
       return res.status(400).json({ error: 'Missing required blueprint data.' })
     }
 
-    // Create the Exam and deeply nest its questions -> subquestions
-    const newExam = await prisma.exam.create({
-      data: {
-        name,
-        totalMarks: Number(totalMarks),
-        courseId,
-        questions: {
-          create: questions.map(mainQ => ({
-            qNumber: mainQ.qNo, // e.g. "Q1"
-            subQuestions: {
-              create: mainQ.subQuestions.map(subQ => {
-                // Determine CO mapping. In Prisma we link exactly one courseOutcomeId
-                // The frontend allows multiple CO strings; for now, we map the first one
-                // assuming a strict 1-to-1 OBE standard, or we find its ID.
-                return {
-                  qNumber: subQ.qNo, // e.g. "a"
-                  maxMarks: Number(subQ.marks),
-                  courseOutcome: subQ.cos.length > 0 ? {
-                    connect: {
-                      courseId_coNumber: {
-                        courseId: courseId,
-                        coNumber: subQ.cos[0]
-                      }
-                    }
-                  } : undefined
-                }
-              })
-            }
-          }))
+    // Wrap in a transaction to ensure atomic saves
+    const newExam = await prisma.$transaction(async (tx) => {
+      // 1. Create the base Exam
+      const exam = await tx.exam.create({
+        data: {
+          name,
+          totalMarks: Number(totalMarks),
+          courseId
         }
-      },
-      include: {
-        questions: {
-          include: { subQuestions: true }
+      })
+
+      // 2. Iterate through main questions
+      for (const mainQ of questions) {
+        const parent = await tx.question.create({
+          data: {
+            qNumber: mainQ.qNo,
+            examId: exam.id
+          }
+        })
+
+        // 3. Iterate through sub-questions
+        if (mainQ.subQuestions && mainQ.subQuestions.length > 0) {
+          for (const subQ of mainQ.subQuestions) {
+            
+            // Resolve CO ID dynamically
+            let courseOutcomeId = null
+            if (subQ.cos && subQ.cos.length > 0) {
+               const co = await tx.courseOutcome.findUnique({
+                 where: {
+                   courseId_coNumber: {
+                     courseId: courseId,
+                     coNumber: subQ.cos[0]
+                   }
+                 }
+               })
+               if (co) courseOutcomeId = co.id
+            }
+
+            await tx.question.create({
+              data: {
+                qNumber: subQ.qNo,
+                maxMarks: Number(subQ.marks),
+                examId: exam.id, // Explicitly pass examId
+                parentQuestionId: parent.id, // Explicitly link to main question
+                courseOutcomeId
+              }
+            })
+          }
         }
       }
+
+      return exam
     })
 
     res.status(201).json(newExam)
   } catch (error) {
     console.error('Create exam blueprint error:', error)
     res.status(500).json({ error: 'Failed to create exam blueprint.' })
+  }
+})
+
+// --- PHASE 24 GRID ENDPOINTS ---
+
+app.get('/api/courses/:id/enrollments-exams', protect, async (req, res) => {
+  try {
+    const course = await prisma.course.findUnique({
+      where: { id: req.params.id },
+      include: {
+        academicClass: {
+          include: { 
+            students: { orderBy: { rollNo: 'asc' } } 
+          }
+        },
+        exams: {
+          include: {
+            questions: {
+              where: { parentQuestionId: null },
+              orderBy: { qNumber: 'asc' },
+              include: {
+                subQuestions: {
+                  orderBy: { qNumber: 'asc' },
+                  include: { courseOutcome: true }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+    
+    if (!course) return res.status(404).json({ error: 'Course not found' })
+
+    res.json({
+      students: course.academicClass?.students || [],
+      exams: course.exams || []
+    })
+  } catch (err) {
+    console.error('Enrollments fetch error:', err)
+    res.status(500).json({ error: 'Failed to fetch course data' })
+  }
+})
+
+app.post('/api/mappings/co-po', protect, requireTeacherOrAdmin, async (req, res) => {
+  try {
+    const { mappings } = req.body
+    if (!mappings || !Array.isArray(mappings)) return res.status(400).json({ error: 'Invalid mappings data' })
+
+    const upsertPromises = mappings.map(mapping => {
+      // If correlationLevel is 0, we can ideally delete it. But for upsert, let's let it be saved as 0 or handle logic later.
+      if (mapping.type === 'PO') {
+        return prisma.cO_PO_Mapping.upsert({
+          where: {
+            courseOutcomeId_programOutcomeId: {
+              courseOutcomeId: mapping.courseOutcomeId,
+              programOutcomeId: mapping.targetId
+            }
+          },
+          update: { correlationLevel: mapping.correlationLevel },
+          create: {
+            courseOutcomeId: mapping.courseOutcomeId,
+            programOutcomeId: mapping.targetId,
+            correlationLevel: mapping.correlationLevel
+          }
+        })
+      } else {
+        return prisma.cO_PSO_Mapping.upsert({
+          where: {
+            courseOutcomeId_programSpecificOutcomeId: {
+              courseOutcomeId: mapping.courseOutcomeId,
+              programSpecificOutcomeId: mapping.targetId
+            }
+          },
+          update: { correlationLevel: mapping.correlationLevel },
+          create: {
+            courseOutcomeId: mapping.courseOutcomeId,
+            programSpecificOutcomeId: mapping.targetId,
+            correlationLevel: mapping.correlationLevel
+          }
+        })
+      }
+    })
+
+    await prisma.$transaction(upsertPromises)
+    res.json({ message: 'Mappings saved successfully' })
+  } catch(error) {
+    console.error('Save mappings error:', error)
+    res.status(500).json({ error: 'Failed to save mappings' })
   }
 })
 
@@ -691,10 +796,13 @@ app.get('/api/mappings/:courseId', protect, async (req, res) => {
   try {
     const { courseId } = req.params
     
-    // We fetch the COs for this course and include their specific coPoMappings
+    // We fetch the COs for this course and include their specific coPoMappings and coPsoMappings
     const courseOutcomes = await prisma.courseOutcome.findMany({
       where: { courseId },
-      include: { coPoMappings: true },
+      include: { 
+        coPoMappings: true,
+        coPsoMappings: true
+      },
       orderBy: { coNumber: 'asc' }
     })
     
@@ -792,6 +900,70 @@ app.use((err, req, res, next) => {
 
 // --- Server Startup ---
 const PORT = process.env.PORT || 5000
+
+// --- STUDENT COURSE EXIT SURVEY ENDPOINTS ---
+
+app.get('/api/student/pending-surveys', protect, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } })
+    if (user.role !== 'STUDENT') return res.status(403).json({ error: 'Only students can view pending surveys' })
+    if (!user.rollNo) return res.status(400).json({ error: 'Student Roll No not found in profile' })
+
+    const student = await prisma.student.findUnique({ where: { rollNo: user.rollNo } })
+    if (!student) return res.status(404).json({ error: 'Student academic record not found in system' })
+
+    const courses = await prisma.course.findMany({
+      where: { academicClassId: student.academicClassId },
+      include: {
+        courseOutcomes: true,
+        courseExitSurveys: {
+          where: { studentId: student.id }
+        }
+      }
+    })
+
+    const pendingCourses = courses.filter(course => {
+      return course.courseOutcomes.length > 0 && 
+             course.courseExitSurveys.length < course.courseOutcomes.length
+    })
+
+    const payload = pendingCourses.map(c => ({
+      id: c.id,
+      code: c.code,
+      name: c.name,
+      courseOutcomes: c.courseOutcomes,
+      studentId: student.id
+    }))
+
+    res.json(payload)
+  } catch(error) {
+    console.error('Pending surveys error:', error)
+    res.status(500).json({ error: 'Failed to fetch pending surveys' })
+  }
+})
+
+app.post('/api/student/submit-survey', protect, async (req, res) => {
+  try {
+    const { courseId, studentId, ratings } = req.body
+    
+    const surveyData = ratings.map(r => ({
+      rating: parseInt(r.rating),
+      studentId: studentId,
+      courseId: courseId,
+      courseOutcomeId: r.courseOutcomeId
+    }))
+
+    await prisma.courseExitSurvey.createMany({
+      data: surveyData,
+      skipDuplicates: true
+    })
+
+    res.json({ message: 'Survey submitted successfully' })
+  } catch(error) {
+    console.error('Submit survey error:', error)
+    res.status(500).json({ error: 'Failed to submit survey' })
+  }
+})
 
 const bootstrapClasses = async () => {
   try {
