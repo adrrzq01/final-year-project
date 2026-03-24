@@ -29,6 +29,7 @@ model User {
   rollNo    String?  @unique
   className String?
   division  String?
+  currentSemester Int @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -48,6 +49,7 @@ model Student {
   id              String        @id @default(uuid())
   rollNo          String        @unique
   name            String
+  currentSemester Int           @default(1)
   academicClassId String
   academicClass   AcademicClass @relation(fields: [academicClassId], references: [id], onDelete: Cascade)
   createdAt       DateTime      @default(now())
@@ -156,6 +158,12 @@ model ProgramSpecificOutcome {
   updatedAt   DateTime @updatedAt
 
   coPsoMappings CO_PSO_Mapping[]
+}
+
+model GlobalSettings {
+  id              String   @id @default(uuid())
+  activeParity    String   @default("ODD") // "ODD" (1,3,5) or "EVEN" (2,4,6)
+  updatedAt       DateTime @updatedAt
 }
 
 model CO_PO_Mapping {

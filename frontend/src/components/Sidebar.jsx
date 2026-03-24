@@ -67,12 +67,24 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-4 border-t border-slate-100 dark:border-slate-700/60">
+      <div className="px-4 py-4 border-t border-slate-100 dark:border-slate-700/60 flex flex-col gap-3">
         <div className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/60 dark:to-violet-950/60 rounded-xl p-3 border border-indigo-100 dark:border-indigo-900/50">
           <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">Academic Year</p>
           <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200 mt-0.5">2025 – 2026</p>
           <p className="text-xs text-indigo-500 dark:text-indigo-500 mt-0.5">Semester {activeSemester} · Active</p>
         </div>
+
+        <button 
+          onClick={() => {
+            localStorage.removeItem('token')
+            localStorage.removeItem('user')
+            window.location.href = '/login'
+          }}
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-bold text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 transition-colors border border-rose-100 dark:border-rose-900/30"
+        >
+          <LogOut size={16} />
+          Sign Out
+        </button>
       </div>
     </aside>
   )

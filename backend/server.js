@@ -50,6 +50,37 @@ app.put('/api/admin/approve-user/:id', protect, requireAdmin, async (req, res) =
   }
 });
 
+// Global Settings (Parity)
+app.get('/api/admin/settings', async (req, res) => {
+  try {
+    let settings = await prisma.globalSettings.findUnique({ where: { id: "1" } });
+    if (!settings) {
+      settings = await prisma.globalSettings.create({ data: { id: "1", activeParity: 'ODD' } });
+    }
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch settings.' });
+  }
+});
+
+app.put('/api/admin/settings', protect, requireAdmin, async (req, res) => {
+  try {
+    const { activeParity } = req.body;
+    if (!['ODD', 'EVEN'].includes(activeParity)) {
+      return res.status(400).json({ error: 'Invalid parity value' });
+    }
+    const settings = await prisma.globalSettings.upsert({
+      where: { id: "1" },
+      update: { activeParity },
+      create: { id: "1", activeParity }
+    });
+    res.json(settings);
+  } catch (err) {
+    console.error('Settings update error:', err)
+    res.status(500).json({ error: err.message || 'Failed to update settings.' });
+  }
+});
+
 // 2. Bulk Upload Students (from CSV)
 app.post('/api/students/bulk-upload', protect, requireTeacherOrAdmin, async (req, res) => {
   try {
@@ -386,9 +417,12 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
       return res.status(400).json({ error: 'Missing required blueprint data.' })
     }
 
-    // Wrap in a transaction to ensure atomic saves
+    // Wrap in a transaction to ensure atomic saves, with a 15-second wide threshold
     const newExam = await prisma.$transaction(async (tx) => {
-      // 1. Create the base Exam
+      // 1. Fetch available COs globally to instantly drop 30+ sequential queries
+      const courseCOs = await tx.courseOutcome.findMany({ where: { courseId } })
+
+      // 2. Create the base Exam
       const exam = await tx.exam.create({
         data: {
           name,
@@ -397,7 +431,7 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
         }
       })
 
-      // 2. Iterate through main questions
+      // 3. Iterate through main questions sequentially
       for (const mainQ of questions) {
         const parent = await tx.question.create({
           data: {
@@ -406,30 +440,23 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
           }
         })
 
-        // 3. Iterate through sub-questions
+        // 4. Iterate through sub-questions mapping efficiently
         if (mainQ.subQuestions && mainQ.subQuestions.length > 0) {
           for (const subQ of mainQ.subQuestions) {
             
-            // Resolve CO ID dynamically
+            // Resolve CO ID directly from memory buffer
             let courseOutcomeId = null
             if (subQ.cos && subQ.cos.length > 0) {
-               const co = await tx.courseOutcome.findUnique({
-                 where: {
-                   courseId_coNumber: {
-                     courseId: courseId,
-                     coNumber: subQ.cos[0]
-                   }
-                 }
-               })
-               if (co) courseOutcomeId = co.id
+               const matchingCO = courseCOs.find(co => co.coNumber === subQ.cos[0])
+               if (matchingCO) courseOutcomeId = matchingCO.id
             }
 
             await tx.question.create({
               data: {
                 qNumber: subQ.qNo,
                 maxMarks: Number(subQ.marks),
-                examId: exam.id, // Explicitly pass examId
-                parentQuestionId: parent.id, // Explicitly link to main question
+                examId: exam.id, 
+                parentQuestionId: parent.id, 
                 courseOutcomeId
               }
             })
@@ -438,12 +465,35 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
       }
 
       return exam
-    })
+    }, { timeout: 15000, maxWait: 15000 })
 
     res.status(201).json(newExam)
   } catch (error) {
     console.error('Create exam blueprint error:', error)
-    res.status(500).json({ error: 'Failed to create exam blueprint.' })
+    
+    // DEBUG TRAP: Save the exact payload and error to disk for analysis
+    try {
+      require('fs').writeFileSync(
+        require('path').join(__dirname, 'blueprint_crash.json'), 
+        JSON.stringify({ body: req.body, error: error.message || String(error), stack: error.stack }, null, 2)
+      )
+    } catch (e) { /* ignore */ }
+
+    // Send the exact stack trace to the frontend so the user alert tells us EXACTLY what broke!
+    res.status(500).json({ error: error.message || String(error) })
+  }
+})
+
+app.delete('/api/exams/:id', protect, requireTeacherOrAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    await prisma.exam.delete({
+      where: { id }
+    })
+    res.json({ message: 'Exam blueprint deleted successfully' })
+  } catch (error) {
+    console.error('Delete exam error:', error)
+    res.status(500).json({ error: 'Failed to delete exam blueprint.' })
   }
 })
 
@@ -467,7 +517,7 @@ app.get('/api/courses/:id/enrollments-exams', protect, async (req, res) => {
               include: {
                 subQuestions: {
                   orderBy: { qNumber: 'asc' },
-                  include: { courseOutcome: true }
+                  include: { courseOutcome: true, marks: true }
                 }
               }
             }
@@ -711,38 +761,45 @@ app.get('/api/dashboard', protect, async (req, res) => {
     // Compute institution-wide Recharts data map per Course
     const chartData = []
 
-    for (const course of courses) {
-      try {
-        const result = await calculateAttainment(course.id)
-        
-        let courseCoTotalLevel = 0
-        let courseAssessedCos = 0
-
-        result.coAttainment.forEach(co => {
-          if (co.timesAssessed > 0) {
-            courseAssessedCos++
-            totalAssessedCOs++
-            sumOfAllFinalCOLevels += co.finalAttainmentLevel
-            courseCoTotalLevel += co.finalAttainmentLevel
-            
-            // Check if they met their target percent physically based on Direct %
-            if (co.directAttainmentPercentage >= co.targetThresholdPct) {
-              targetMetCount++
-            }
-          }
-        })
-
-        if (courseAssessedCos > 0) {
-          const avgLevel = courseCoTotalLevel / courseAssessedCos
-          chartData.push({
-            name: course.name.substring(0, 15) + (course.name.length > 15 ? '...' : ''), // truncate long names
-            Attainment: Number(avgLevel.toFixed(2)),
-            Target: 2.0 // Institution standard baseline
-          })
+    // Parallelize all 37+ course calculations simultaneously
+    const courseResults = await Promise.all(
+      courses.map(async (course) => {
+        try {
+          const result = await calculateAttainment(course.id)
+          return { course, result }
+        } catch (err) {
+          console.warn(`Dashboard aggregation warning for Course ${course.id}:`, err.message)
+          return { course, result: null }
         }
-      } catch (err) {
-        // Skip courses without logical attainment footprints
-        console.warn(`Dashboard aggregation warning for Course ${course.id}:`, err.message)
+      })
+    )
+
+    for (const { course, result } of courseResults) {
+      if (!result) continue;
+
+      let courseCoTotalLevel = 0
+      let courseAssessedCos = 0
+
+      result.coAttainment.forEach(co => {
+        if (co.timesAssessed > 0) {
+          courseAssessedCos++
+          totalAssessedCOs++
+          sumOfAllFinalCOLevels += co.finalAttainmentLevel
+          courseCoTotalLevel += co.finalAttainmentLevel
+          
+          if (co.directAttainmentPercentage >= co.targetThresholdPct) {
+            targetMetCount++
+          }
+        }
+      })
+
+      if (courseAssessedCos > 0) {
+        const avgLevel = courseCoTotalLevel / courseAssessedCos
+        chartData.push({
+          name: course.name.substring(0, 15) + (course.name.length > 15 ? '...' : ''),
+          Attainment: Number(avgLevel.toFixed(2)),
+          Target: 2.0
+        })
       }
     }
 
@@ -962,6 +1019,83 @@ app.post('/api/student/submit-survey', protect, async (req, res) => {
   } catch(error) {
     console.error('Submit survey error:', error)
     res.status(500).json({ error: 'Failed to submit survey' })
+  }
+})
+
+// 18. Get Student Specific Marks List
+app.get('/api/student/marks', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'STUDENT') return res.status(403).json({ error: 'Unauthorized' })
+
+    const userEntry = await prisma.user.findUnique({ where: { id: req.user.id } })
+    if (!userEntry || !userEntry.rollNo) return res.status(400).json({ error: 'Missing Roll Number' })
+
+    const student = await prisma.student.findUnique({ where: { rollNo: userEntry.rollNo } })
+    if (!student) return res.status(404).json({ error: 'Academic record not found' })
+
+    const targetSem = req.query.sem ? parseInt(req.query.sem) : student.currentSemester
+    if (targetSem > student.currentSemester) {
+       return res.status(403).json({ error: 'Cannot access future semester transcripts.' })
+    }
+
+    const courses = await prisma.course.findMany({
+      where: {
+        semester: targetSem,
+        academicClass: {
+          students: { some: { id: student.id } }
+        }
+      },
+      include: {
+        exams: {
+           orderBy: { createdAt: 'asc' },
+           include: {
+              questions: {
+                 orderBy: { qNumber: 'asc' },
+                 include: {
+                    subQuestions: {
+                       orderBy: { qNumber: 'asc' },
+                       include: {
+                          courseOutcome: true,
+                          marks: { where: { studentId: student.id } }
+                       }
+                    }
+                 }
+              }
+           }
+        }
+      }
+    })
+
+    const payload = courses.map(c => {
+      const results = []
+      c.exams.forEach(ex => {
+        ex.questions.forEach(q => {
+          q.subQuestions.forEach(sq => {
+            const m = sq.marks[0]
+            const got = m ? m.obtainedMarks : null
+            const isPass = got !== null ? got >= (sq.maxMarks * 0.40) : null
+            results.push({
+               examCode: ex.name,
+               qLabel: `${q.qNumber}${sq.qNumber}`,
+               co: sq.courseOutcome?.coNumber || 'N/A',
+               max: sq.maxMarks,
+               got: got,
+               pass: isPass
+            })
+          })
+        })
+      })
+      return { id: c.id, code: c.code, name: c.name, marksList: results }
+    })
+
+    res.json({
+       currentSemester: student.currentSemester,
+       targetSemester: targetSem,
+       courses: payload
+    })
+  } catch (error) {
+    console.error('Student marks fail:', error)
+    res.status(500).json({ error: 'Failed' })
   }
 })
 

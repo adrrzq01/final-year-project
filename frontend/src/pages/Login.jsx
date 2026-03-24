@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Mail, Loader2, AlertCircle } from 'lucide-react'
 import axios from 'axios'
@@ -14,9 +14,28 @@ export default function Login() {
   const [role, setRole] = useState('TEACHER') // Default
   const [department, setDepartment] = useState('BCA')
   const [phoneNo, setPhoneNo] = useState('')
-  const [rollNo, setRollNo] = useState('')
   const [className, setClassName] = useState('')
   const [division, setDivision] = useState('')
+  const [currentSemester, setCurrentSemester] = useState('1')
+  const [activeParity, setActiveParity] = useState('ODD')
+
+  useEffect(() => {
+    const fetchP = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/admin/settings')
+        if (res.data?.activeParity) setActiveParity(res.data.activeParity)
+      } catch (e) {
+        console.error('Settings skip', e)
+      }
+    }
+    fetchP()
+  }, [])
+
+  useEffect(() => {
+    setCurrentSemester(activeParity === 'ODD' ? '1' : '2')
+  }, [activeParity])
+
+  const availableSemesters = activeParity === 'ODD' ? [1, 3, 5] : [2, 4, 6]
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -60,6 +79,7 @@ export default function Login() {
         payload.rollNo = rollNo
         payload.className = className
         payload.division = division
+        payload.currentSemester = parseInt(currentSemester, 10)
       }
 
       await axios.post('http://localhost:5000/api/auth/register', payload)
@@ -204,7 +224,7 @@ export default function Login() {
                 </div>
 
                 {role === 'STUDENT' && (
-                  <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-in fade-in slide-in-from-top-2">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Roll No</label>
                       <input
@@ -237,6 +257,18 @@ export default function Login() {
                         className="mt-1 block w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-slate-900 dark:text-white sm:text-sm"
                         placeholder="A"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Semester</label>
+                      <select
+                        value={currentSemester}
+                        onChange={(e) => setCurrentSemester(e.target.value)}
+                        className="mt-1 block w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-slate-900 dark:text-white sm:text-sm"
+                      >
+                        {[1, 2, 3, 4, 5, 6].map(sem => (
+                          <option key={sem} value={sem} className={!availableSemesters.includes(sem) ? 'hidden' : ''}>{sem}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 )}

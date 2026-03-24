@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
 import { BookOpen, TrendingUp, Presentation, AlertCircle, Loader2, ClipboardCheck, Star, X } from "lucide-react";
 import axios from "axios";
+import { useAlert } from "../context/AlertContext";
 
 export default function StudentDashboard() {
   const [courses, setCourses] = useState([]);
   const [pendingSurveys, setPendingSurveys] = useState([]);
+  const [myMarks, setMyMarks] = useState([]);
+  const [currentSem, setCurrentSem] = useState(1);
+  const [targetSem, setTargetSem] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { showAlert } = useAlert();
   
   // Survey Modal State
   const [activeSurvey, setActiveSurvey] = useState(null);
@@ -25,18 +30,35 @@ export default function StudentDashboard() {
       setLoading(true);
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
       
-      const [coursesRes, surveysRes] = await Promise.all([
+      const [coursesRes, surveysRes, marksRes] = await Promise.all([
         axios.get("http://localhost:5000/api/courses", config), // Baseline academics
-        axios.get("http://localhost:5000/api/student/pending-surveys", config)
+        axios.get("http://localhost:5000/api/student/pending-surveys", config),
+        axios.get("http://localhost:5000/api/student/marks", config)
       ]);
 
       setCourses(coursesRes.data);
       setPendingSurveys(surveysRes.data);
+      
+      setMyMarks(marksRes.data.courses || []);
+      setCurrentSem(marksRes.data.currentSemester || 1);
+      setTargetSem(marksRes.data.targetSemester || 1);
     } catch (err) {
       console.error(err);
       setError("Failed to load your academic profile.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSemesterMarks = async (sem) => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
+      const res = await axios.get(`http://localhost:5000/api/student/marks?sem=${sem}`, config);
+      setMyMarks(res.data.courses || []);
+      setTargetSem(res.data.targetSemester || parseInt(sem, 10));
+    } catch(err) {
+      console.error(err);
+      showAlert("Failed to load semester marks.", "error");
     }
   };
 
@@ -48,7 +70,7 @@ export default function StudentDashboard() {
     // Validate all COs are rated
     const unrated = activeSurvey.courseOutcomes.filter(co => !ratings[co.id]);
     if (unrated.length > 0) {
-      alert("Please rate all Course Outcomes before submitting.");
+      showAlert("Please rate all Course Outcomes before submitting.", "warning");
       return;
     }
 
@@ -71,10 +93,10 @@ export default function StudentDashboard() {
       setPendingSurveys(prev => prev.filter(s => s.id !== activeSurvey.id));
       setActiveSurvey(null);
       setRatings({});
-      alert("Survey submitted successfully! Thank you.");
+      showAlert("Survey submitted successfully! Thank you.", "success");
     } catch(err) {
       console.error(err);
-      alert("Failed to submit survey.");
+      showAlert("Failed to submit survey.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -162,6 +184,106 @@ export default function StudentDashboard() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Detailed Marks Transcript */}
+          <div className="pt-8">
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+               <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <BookOpen size={20} className="text-indigo-500" />
+                  My Official Marks Transcript
+               </h3>
+               
+               <div className="flex items-center gap-3">
+                 <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 hidden sm:block">View Semester:</span>
+                 <select 
+                   value={targetSem}
+                   onChange={(e) => fetchSemesterMarks(e.target.value)}
+                   className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-3 py-2 rounded-lg focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
+                 >
+                   {Array.from({length: currentSem}, (_, i) => i + 1).map(sem => (
+                     <option key={sem} value={sem}>Semester {sem}</option>
+                   ))}
+                 </select>
+               </div>
+             </div>
+             
+             {myMarks.length === 0 ? (
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-12 text-center shadow-sm animate-in fade-in">
+                   <div className="mx-auto w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 flex items-center justify-center rounded-2xl mb-4 shadow-sm border border-indigo-100 dark:border-indigo-800">
+                     <BookOpen size={28} />
+                   </div>
+                   <h4 className="text-slate-800 dark:text-slate-200 font-bold text-lg mb-2">No Academic Records Available</h4>
+                   <p className="text-slate-500 dark:text-slate-400 text-sm max-w-md mx-auto leading-relaxed">
+                     We could not find any exam or assessment records for <strong>Semester {targetSem}</strong>. If this is a new platform deployment, historic legacy marks may not be migrated yet.
+                   </p>
+                </div>
+             ) : (
+                <div className="space-y-6">
+                   {myMarks.map(course => (
+                      <div key={course.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 overflow-hidden shadow-sm animate-in fade-in">
+                      {/* Course Header Bar */}
+                      <div className="bg-slate-50 dark:bg-slate-900/50 px-6 py-4 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+                         <div>
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold font-mono text-sm">{course.code}</span>
+                            <h4 className="text-slate-800 dark:text-slate-200 font-bold ml-3 inline-block">{course.name}</h4>
+                         </div>
+                      </div>
+
+                      {/* Marks Matrix */}
+                      {course.marksList && course.marksList.length > 0 ? (
+                         <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm whitespace-nowrap">
+                               <thead>
+                                  <tr className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60">
+                                     <th className="px-6 py-3 text-slate-500 font-semibold w-32">Exam Type</th>
+                                     <th className="px-6 py-3 text-slate-500 font-semibold w-24 text-center">Question</th>
+                                     <th className="px-6 py-3 text-slate-500 font-semibold w-24 text-center">Outcome</th>
+                                     <th className="px-6 py-3 text-slate-500 font-semibold w-32 text-center">Max Marks</th>
+                                     <th className="px-6 py-3 text-slate-800 dark:text-slate-200 font-bold text-center">Score Obtained</th>
+                                     <th className="px-6 py-3 text-slate-500 font-semibold text-center rounded-tr-2xl">40% ATTAINMENT</th>
+                                  </tr>
+                               </thead>
+                               <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">
+                                  {course.marksList.map((m, idx) => (
+                                     <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                        <td className="px-6 py-2.5 text-slate-600 dark:text-slate-400 font-medium">
+                                           {m.examCode}
+                                        </td>
+                                        <td className="px-6 py-2.5 text-slate-500 font-mono text-center">
+                                           {m.qLabel}
+                                        </td>
+                                        <td className="px-6 py-2.5 text-slate-500 font-mono text-center text-xs">
+                                           <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">{m.co}</span>
+                                        </td>
+                                        <td className="px-6 py-2.5 text-slate-500 text-center font-semibold">
+                                           {m.max}
+                                        </td>
+                                        <td className="px-6 py-2.5 text-center font-black text-indigo-700 dark:text-indigo-400 text-base">
+                                           {m.got !== null ? m.got : <span className="text-slate-300 font-normal dark:text-slate-600">-</span>}
+                                        </td>
+                                        <td className="px-6 py-2.5 text-center">
+                                           {m.pass === true 
+                                             ? <span className="inline-block bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-3 py-1 rounded text-xs font-bold w-16 text-center">PASS</span>
+                                             : m.pass === false 
+                                               ? <span className="inline-block bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 px-3 py-1 rounded text-xs font-bold w-16 text-center">FAIL</span>
+                                               : <span className="inline-block bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500 px-3 py-1 rounded text-xs font-bold w-16 text-center">N/A</span>
+                                           }
+                                        </td>
+                                     </tr>
+                                  ))}
+                               </tbody>
+                            </table>
+                         </div>
+                      ) : (
+                         <div className="px-6 py-8 text-center text-slate-400 dark:text-slate-500 text-sm font-medium">
+                            No exam data captured for this course yet.
+                         </div>
+                      )}
+                   </div>
+                ))}
+             </div>
+            )}
           </div>
         </>
       )}

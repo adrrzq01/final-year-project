@@ -3,21 +3,49 @@ import axios from 'axios'
 import { ShieldCheck, UserCheck, AlertCircle, Loader2, GraduationCap, Users, BookOpen, TrendingUp, Award } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import AttainmentChart from '../components/AttainmentChart'
+import { useAlert } from '../context/AlertContext'
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState('TEACHER')
+  const { showAlert } = useAlert()
 
   // Analytics state
   const [analyticsData, setAnalyticsData] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [globalParity, setGlobalParity] = useState('ODD')
+  const [parityLoading, setParityLoading] = useState(true)
 
   useEffect(() => {
     fetchPendingUsers()
     fetchAnalytics()
+    fetchSettings()
   }, [])
+
+  const fetchSettings = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/settings')
+      setGlobalParity(res.data.activeParity || 'ODD')
+    } catch(err) {
+      console.error(err)
+    } finally {
+      setParityLoading(false)
+    }
+  }
+
+  const toggleParity = async () => {
+    const nextParity = globalParity === 'ODD' ? 'EVEN' : 'ODD'
+    try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await axios.put('http://localhost:5000/api/admin/settings', { activeParity: nextParity }, config)
+      setGlobalParity(nextParity)
+      showAlert(`Global Semester Parity shifted to ${nextParity}`, 'success')
+    } catch (err) {
+      showAlert('Failed to update parity settings', 'error')
+    }
+  }
 
   const fetchPendingUsers = async () => {
     try {
@@ -50,9 +78,9 @@ export default function AdminDashboard() {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       await axios.put(`http://localhost:5000/api/admin/approve-user/${id}`, {}, config)
       setUsers(prev => prev.filter(u => u.id !== id))
-      alert(`${isTeacher ? 'Teacher' : 'Student'} approved successfully!`)
+      showAlert(`${isTeacher ? 'Teacher' : 'Student'} approved successfully!`, 'success')
     } catch (err) {
-      alert(`Failed to approve ${isTeacher ? 'teacher' : 'student'}`)
+      showAlert(`Failed to approve ${isTeacher ? 'teacher' : 'student'}`, 'error')
     }
   }
 
@@ -72,6 +100,35 @@ export default function AdminDashboard() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">System analytics, access management, and unified registrations.</p>
         </div>
       </div>
+
+      {/* Global System Settings */}
+      {!parityLoading && (
+        <div className="bg-linear-to-r from-indigo-50 to-violet-50 dark:from-indigo-900/20 dark:to-violet-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/40 p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+          <div>
+            <h3 className="text-lg font-bold text-indigo-900 dark:text-indigo-100 flex items-center gap-2">
+              <BookOpen size={20} className="text-indigo-600 dark:text-indigo-400" />
+              Global Academic Cycle Parity
+            </h3>
+            <p className="text-sm text-indigo-700/80 dark:text-indigo-300/80 max-w-xl mt-1">
+              Command the active semesters recognized by the application. ODD maps active rosters to [1st, 3rd, 5th] semesters. EVEN maps to [2nd, 4th, 6th] semesters. Student registrations rigidly sync to this cycle constraint.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 bg-white dark:bg-slate-800 p-2 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <button
+               onClick={() => globalParity !== 'ODD' && toggleParity()}
+               className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex 1 ${globalParity === 'ODD' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+            >
+              ODD Cycle
+            </button>
+            <button
+               onClick={() => globalParity !== 'EVEN' && toggleParity()}
+               className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all flex 1 ${globalParity === 'EVEN' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+            >
+              EVEN Cycle
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Analytics Summary */}
       {analyticsLoading ? (

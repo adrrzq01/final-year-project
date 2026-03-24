@@ -1,9 +1,11 @@
-import { useState, useRef } from 'react'
-import { UploadCloud, FileSpreadsheet, X, CheckCircle2, AlertCircle, Download, FolderOpen } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { UploadCloud, FileSpreadsheet, X, CheckCircle2, AlertCircle, Download, FolderOpen, ChevronDown } from 'lucide-react'
 import axios from 'axios'
 import Papa from 'papaparse'
 
 export default function Upload() {
+  const [classes, setClasses] = useState([])
+  const [classSelected, setClassSelected] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [uploadedFile, setUploadedFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -11,6 +13,17 @@ export default function Upload() {
   const [errorText, setErrorText] = useState('')
   const [recentUploads, setRecentUploads] = useState([])
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        const res = await axios.get('http://localhost:5000/api/academic-classes', config)
+        setClasses(res.data)
+      } catch (err) { console.error('Failed to fetch classes', err) }
+    }
+    fetchClasses()
+  }, [])
 
   const handleDrop = (e) => {
     e.preventDefault()
@@ -47,15 +60,19 @@ export default function Upload() {
     try {
       const data = await processCSV(uploadedFile)
       
-      // Basic validation for Student List format
+      // Validation
+      if (!classSelected) {
+        throw new Error('Please select a Target Batch/Class first')
+      }
       if (data.length > 0 && !data[0].rollNo) {
         throw new Error('CSV must contain a "rollNo" column header')
       }
 
       // Send to backend API
       const response = await axios.post('http://localhost:5000/api/students/bulk-upload', {
+        academicClassId: classSelected,
         students: data
-      })
+      }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
 
       // Update history list
       setRecentUploads(prev => [{
@@ -95,9 +112,25 @@ export default function Upload() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Upload Data</h2>
-        <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Import student lists via CSV files to save to the database</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Upload Data</h2>
+          <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Import student lists via CSV files to save to the database</p>
+        </div>
+        
+        <div className="relative min-w-[240px]">
+          <select
+            value={classSelected}
+            onChange={(e) => setClassSelected(e.target.value)}
+            className="w-full appearance-none bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
+          >
+            <option value="" disabled>— Target Academic Class —</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
       </div>
 
       {/* Drop Zone */}

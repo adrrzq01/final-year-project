@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, ChevronDown, FileText } from 'lucide-react'
 import axios from 'axios'
+import { useAlert } from '../context/AlertContext'
 
 const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
 const coOptions = ['CO1', 'CO2', 'CO3', 'CO4', 'CO5', 'CO6']
@@ -21,6 +22,9 @@ const examTypes = [
   { name: 'SEE', label: 'SEE', target: 85 }
 ]
 
+const hindiVowels = ['अ', 'आ', 'इ', 'ई', 'उ', 'ऊ', 'ऋ', 'ए', 'ऐ', 'ओ', 'औ']
+const hindiConsonants = ['क', 'ख', 'ग', 'घ', 'ङ', 'च', 'छ', 'ज', 'झ', 'ञ', 'ट', 'ठ', 'ड', 'ढ', 'ण', 'त', 'थ', 'द', 'ध', 'न', 'प', 'फ', 'ब', 'भ', 'म', 'य', 'र', 'ल', 'व', 'श', 'ष', 'स', 'ह']
+
 export default function Exams() {
   const [courses, setCourses] = useState([])
   const [questions, setQuestions] = useState([]) // start empty
@@ -28,6 +32,11 @@ export default function Exams() {
   const [saved, setSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [courseSelected, setCourseSelected] = useState('')
+  const [existingExams, setExistingExams] = useState([])
+  const { showAlert, showConfirm } = useAlert()
+
+  const activeCourseObj = courses.find((c) => c.id === courseSelected)
+  const isLangCourse = activeCourseObj && (activeCourseObj.name.toLowerCase().includes('hindi') || activeCourseObj.name.toLowerCase().includes('konkani'))
 
   useEffect(() => {
     fetchCourses()
@@ -40,6 +49,33 @@ export default function Exams() {
       if (res.data.length > 0) setCourseSelected(res.data[0].id)
     } catch (err) {
       console.error('Failed to fetch courses:', err)
+    }
+  }
+
+  useEffect(() => {
+    if (!courseSelected) return
+    const fetchExisting = async () => {
+      try {
+        const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        const res = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams`, config)
+        setExistingExams(res.data.exams || [])
+      } catch (e) {
+        console.error('Failed to fetch existing exams:', e)
+      }
+    }
+    fetchExisting()
+  }, [courseSelected, saved])
+
+  const handleDeleteExam = async (id) => {
+    const ok = await showConfirm("Are you sure you want to permanently delete this exam blueprint? This will also wipe any student marks associated with it.")
+    if (!ok) return
+    try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await axios.delete(`http://localhost:5000/api/exams/${id}`, config)
+      setSaved(prev => !prev) // Toggle to trigger refetch
+      showAlert("Exam deleted successfully.", "success")
+    } catch(err) {
+      showAlert("Failed to delete exam", "error")
     }
   }
 
@@ -82,9 +118,13 @@ export default function Exams() {
 
   const addMainQuestion = () => {
     const nextId = questions.length > 0 ? Math.max(...questions.map((q) => q.id)) + 1 : 1
+    const defaultQNo = isLangCourse 
+      ? `प्रश्न ${hindiVowels[(nextId - 1) % hindiVowels.length]}` 
+      : `Q${nextId}`
+    
     setQuestions((prev) => [
       ...prev,
-      { id: nextId, qNo: `Q${nextId}`, subQuestions: [] },
+      { id: nextId, qNo: defaultQNo, subQuestions: [] },
     ])
     setSaved(false)
   }
@@ -96,7 +136,9 @@ export default function Exams() {
         if (q.id !== qId) return q
         const nextSubId =
           q.subQuestions.length > 0 ? Math.max(...q.subQuestions.map((sq) => sq.id)) + 1 : 1
-        const char = String.fromCharCode(96 + (q.subQuestions.length + 1)) // 'a', 'b', 'c'
+        const char = isLangCourse
+          ? hindiConsonants[q.subQuestions.length % hindiConsonants.length]
+          : String.fromCharCode(96 + (q.subQuestions.length + 1)) // 'a', 'b', 'c'
         return {
           ...q,
           subQuestions: [
@@ -131,22 +173,24 @@ export default function Exams() {
   const isMarksValid = totalMarks === currentTarget
 
   const handleSaveBlueprint = async () => {
-    if (!courseSelected) return alert('Select a course first')
-    if (questions.length === 0) return alert('Add at least one question')
-    if (!isMarksValid) return alert(`Total marks must be exactly ${currentTarget} for ${examType}. Currently at ${totalMarks}.`)
+    if (!courseSelected) return showAlert('Select a course first', 'warning')
+    if (questions.length === 0) return showAlert('Add at least one question', 'warning')
+    if (!isMarksValid) return showAlert(`Total marks must be exactly ${currentTarget} for ${examType}. Currently at ${totalMarks}.`, 'error')
     
     setIsSaving(true)
     try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       await axios.post('http://localhost:5000/api/exams/blueprint', {
         name: examType,
         courseId: courseSelected,
         totalMarks: totalMarks,
         questions: questions
-      })
+      }, config)
       setSaved(true)
+      showAlert('Blueprint securely saved!', 'success')
     } catch (err) {
       console.error(err)
-      alert(err.response?.data?.error || 'Failed to save blueprint')
+      showAlert(err.response?.data?.error || 'Failed to save blueprint', 'error')
     } finally {
       setIsSaving(false)
     }
@@ -228,6 +272,30 @@ export default function Exams() {
           </div>
         )}
       </div>
+
+      {/* Existing Exams List */}
+      {existingExams.length > 0 && (
+        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-5 shadow-sm mt-4">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+            <FileText size={16} className="text-indigo-500" /> Saved Blueprints for this Course
+          </h3>
+          <div className="flex flex-wrap gap-3">
+            {existingExams.map(ex => (
+              <div key={ex.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-4 pr-1.5 py-1.5 rounded-xl shadow-sm">
+                <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">{ex.name}</span>
+                <span className="text-[11px] font-bold text-slate-500 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">{ex.totalMarks} Marks</span>
+                <button 
+                  onClick={() => handleDeleteExam(ex.id)}
+                  title="Delete Blueprint"
+                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/40 rounded-lg transition-colors focus:outline-none"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Empty state OR table */}
       {questions.length === 0 ? (
@@ -317,7 +385,7 @@ export default function Exams() {
                               onChange={(e) => updateSubQ(q.id, sq.id, 'bloom', e.target.value)}
                               className={`appearance-none text-xs w-full font-semibold px-3 py-1.5 rounded-lg pr-6 focus:outline-none cursor-pointer ${bloomColor[sq.bloom]}`}
                             >
-                              {bloomLevels.map((l) => <option key={l}>{l}</option>)}
+                              {bloomLevels.map((l) => <option key={l} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100">{l}</option>)}
                             </select>
                             <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
                           </div>
@@ -362,6 +430,14 @@ export default function Exams() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700/60 p-4">
+             <button
+               onClick={addMainQuestion}
+               className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 active:scale-95 transition-all"
+             >
+               <Plus size={15} /> Add Another Main Question
+             </button>
           </div>
         </div>
       )}

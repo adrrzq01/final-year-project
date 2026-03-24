@@ -1,8 +1,74 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { ChevronDown, Save, RotateCcw, Download, Table2 } from 'lucide-react'
 import axios from 'axios'
+import { useAlert } from '../context/AlertContext'
+
+const MarksInputCell = ({ sIdx, sqIdx, studentId, sq, cellVal, isInvalid, handleMarkChange, handleKeyDown }) => {
+  const [isGlowing, setIsGlowing] = useState(false)
+  const inputRef = useRef(null)
+  
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    
+    const handleWheel = (e) => {
+      // Must be globally focused to intercept the wheel safely
+      if (document.activeElement !== el) return
+      
+      e.preventDefault() // Completely neutralize global page scroll without blurring focus!
+      
+      const dir = e.deltaY < 0 ? 0.5 : -0.5
+      const numVal = cellVal === '' ? 0 : Number(cellVal)
+      const nextVal = Math.max(0, Math.min(sq.maxMarks, numVal + dir))
+      
+      if (nextVal !== numVal) {
+        handleMarkChange(studentId, sq.id, nextVal, sq.maxMarks)
+        setIsGlowing(true)
+      }
+    }
+    
+    // Bind native non-passive interceptor
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [cellVal, sq.maxMarks, studentId, sq.id, handleMarkChange])
+
+  // Automatically drain the glow
+  useEffect(() => {
+    if (isGlowing) {
+      const t = setTimeout(() => setIsGlowing(false), 2500)
+      return () => clearTimeout(t)
+    }
+  }, [isGlowing])
+
+  return (
+    <td className={`relative px-1 py-1 text-center border-r border-slate-100 dark:border-slate-700/50 
+      ${isInvalid ? 'bg-rose-50 dark:bg-rose-900/20' : ''}
+      ${isGlowing ? 'bg-amber-100/90 dark:bg-amber-900/50 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 shadow-inner' : 'transition-colors duration-700'}
+    `}>
+      <input
+        ref={inputRef}
+        id={`mark-${sIdx}-${sqIdx}`}
+        type="number"
+        min="0"
+        max={sq.maxMarks}
+        step="0.5"
+        value={cellVal}
+        onChange={(e) => handleMarkChange(studentId, sq.id, e.target.value, sq.maxMarks)}
+        onKeyDown={(e) => handleKeyDown(e, sIdx, sqIdx)}
+        onFocus={(e) => e.target.select()}
+        className={`w-14 text-center text-[13px] font-bold bg-transparent border-b-2 focus:outline-none transition-all py-1 rounded-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+          ${isInvalid 
+            ? 'text-rose-600 border-rose-400 focus:bg-rose-100 dark:focus:bg-rose-900/40' 
+            : 'text-slate-800 dark:text-slate-200 border-transparent focus:border-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-indigo-100 dark:focus:bg-indigo-900/40 placeholder-slate-300 dark:placeholder-slate-600'
+          }`}
+        placeholder="-"
+      />
+    </td>
+  )
+}
 
 export default function MarksEntry() {
+  const { showAlert, showConfirm } = useAlert()
   const [courses, setCourses] = useState([])
   const [courseSelected, setCourseSelected] = useState('')
   
@@ -51,6 +117,25 @@ export default function MarksEntry() {
         
         setStudents(data.students || [])
         setExams(data.exams || [])
+        
+        let existingMarksMap = {}
+        if (data.exams) {
+           data.exams.forEach(ex => {
+             if (!ex.questions) return
+             ex.questions.forEach(mainQ => {
+               if (!mainQ.subQuestions) return
+               mainQ.subQuestions.forEach(sq => {
+                 if (sq.marks && sq.marks.length > 0) {
+                   sq.marks.forEach(m => {
+                     existingMarksMap[`${m.studentId}_${sq.id}`] = m.obtainedMarks
+                   })
+                 }
+               })
+             })
+           })
+        }
+        setMarksData(existingMarksMap)
+
         // Pre-select first exam if available to save clicks
         if (data.exams && data.exams.length > 0) {
           setExamSelected(data.exams[0].id)
@@ -91,30 +176,49 @@ export default function MarksEntry() {
   }, [examSelected, exams])
 
   // Handlers
+  const handleKeyDown = (e, rIdx, cIdx) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      e.preventDefault()
+      let nextRow = rIdx
+      let nextCol = cIdx
+      
+      if (e.key === 'ArrowUp') nextRow = Math.max(0, rIdx - 1)
+      if (e.key === 'ArrowDown') nextRow = Math.min(students.length - 1, rIdx + 1)
+      if (e.key === 'ArrowLeft') nextCol = Math.max(0, cIdx - 1)
+      if (e.key === 'ArrowRight') nextCol = Math.min(subQuestions.length - 1, cIdx + 1)
+
+      const nextInput = document.getElementById(`mark-${nextRow}-${nextCol}`)
+      if (nextInput) {
+        nextInput.focus()
+        nextInput.select()
+      }
+    }
+  }
+
   const handleMarkChange = (studentId, subQId, value, maxMarks) => {
     const numValue = Number(value)
     
     // Strict Input Validation Ceilings
     if (numValue > maxMarks) {
-      alert(`Invalid Score: The maximum marks allowed for this specific sub-question is ${maxMarks}.`)
+      showAlert(`Invalid Score: The max allowed is ${maxMarks}.`, 'error')
       return
     }
     if (numValue < 0) return
 
     setMarksData(prev => ({
       ...prev,
-      [`${studentId}-${subQId}`]: value
+      [`${studentId}_${subQId}`]: value
     }))
   }
 
   const handleSaveMarks = async () => {
-    if (Object.keys(marksData).length === 0) return alert('No marks entered.')
+    if (Object.keys(marksData).length === 0) return showAlert('No marks entered.', 'warning')
     
     setIsSaving(true)
     
-    // Transform dict to array
+    // Transform dict to array mapping
     const payload = Object.entries(marksData).map(([key, obtainedMarks]) => {
-      const [studentId, questionId] = key.split('-')
+      const [studentId, questionId] = key.split('_')
       return {
         studentId,
         questionId,
@@ -125,17 +229,18 @@ export default function MarksEntry() {
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       await axios.post('http://localhost:5000/api/marks', { marks: payload }, config)
-      alert('Marks successfully bulk upserted to the database!')
+      showAlert('Marks successfully bulk upserted to the database!', 'success')
     } catch (err) {
       console.error(err)
-      alert('Failed to save marks')
+      showAlert('Failed to save marks', 'error')
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleReset = () => {
-    if (window.confirm('Are you sure you want to clear all currently entered marks on this screen?')) {
+  const handleReset = async () => {
+    const ok = await showConfirm('Are you sure you want to clear all currently entered marks on this screen?')
+    if (ok) {
       setMarksData({})
     }
   }
@@ -243,9 +348,9 @@ export default function MarksEntry() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                {students.map((student) => {
+                {students.map((student, sIdx) => {
                   const rowTotal = subQuestions.reduce((sum, sq) => {
-                    return sum + Number(marksData[`${student.id}-${sq.id}`] || 0)
+                    return sum + Number(marksData[`${student.id}_${sq.id}`] || 0)
                   }, 0)
 
                   return (
@@ -255,26 +360,21 @@ export default function MarksEntry() {
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold truncate w-[190px]" title={student.name}>{student.name}</div>
                       </td>
                       
-                      {subQuestions.map(sq => {
-                        const cellVal = marksData[`${student.id}-${sq.id}`] || ''
+                      {subQuestions.map((sq, sqIdx) => {
+                        const cellVal = marksData[`${student.id}_${sq.id}`] || ''
                         const isInvalid = Number(cellVal) > sq.maxMarks
                         return (
-                          <td key={sq.id} className={`px-1 py-1 text-center border-r border-slate-100 dark:border-slate-700/50 ${isInvalid ? 'bg-rose-50 dark:bg-rose-900/20' : ''}`}>
-                            <input
-                              type="number"
-                              min="0"
-                              max={sq.maxMarks}
-                              step="0.5"
-                              value={cellVal}
-                              onChange={(e) => handleMarkChange(student.id, sq.id, e.target.value, sq.maxMarks)}
-                              className={`w-14 text-center text-[13px] font-bold bg-transparent border-b-2 focus:outline-none transition-all py-1 rounded-sm
-                                ${isInvalid 
-                                  ? 'text-rose-600 border-rose-400 focus:bg-rose-100 dark:focus:bg-rose-900/40' 
-                                  : 'text-slate-800 dark:text-slate-200 border-transparent focus:border-indigo-500 focus:bg-indigo-100 dark:focus:bg-indigo-900/40 placeholder-slate-300 dark:placeholder-slate-600'
-                                }`}
-                              placeholder="-"
-                            />
-                          </td>
+                          <MarksInputCell 
+                            key={sq.id}
+                            sIdx={sIdx}
+                            sqIdx={sqIdx}
+                            studentId={student.id}
+                            sq={sq}
+                            cellVal={cellVal}
+                            isInvalid={isInvalid}
+                            handleMarkChange={handleMarkChange}
+                            handleKeyDown={handleKeyDown}
+                          />
                         )
                       })}
 

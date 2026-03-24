@@ -3,11 +3,14 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
+import { AlertProvider } from './context/AlertContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ThemeProvider>
-      <App />
+      <AlertProvider>
+        <App />
+      </AlertProvider>
     </ThemeProvider>
   </StrictMode>,
 )

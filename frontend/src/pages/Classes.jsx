@@ -82,7 +82,8 @@ export default function Classes() {
   }
 
   const handleDeleteCourse = async (courseId) => {
-    if (!window.confirm("Are you sure? This will permanently delete the course, exams, and marks associated with it.")) return
+    const ok = await showConfirm("Are you sure? This will permanently delete the course, exams, and marks associated with it.")
+    if (!ok) return
     
     try {
       const currentToken = localStorage.getItem('token')
@@ -90,37 +91,40 @@ export default function Classes() {
       setCourses(prev => prev.filter(c => c.id !== courseId))
       setFilteredCourses(prev => prev.filter(c => c.id !== courseId)) // Also update filtered list
       setActiveDropdown(null)
+      showAlert("Course deleted successfully", "success")
     } catch (err) {
       console.error(err)
-      alert(err.response?.data?.error || "Failed to delete course")
+      showAlert(err.response?.data?.error || "Failed to delete course", "error")
     }
   }
 
   const handlePurgeAll = async () => {
-    if (!window.confirm("Are you absolutely sure you want to purge ALL data? This action cannot be undone.")) return
+    const ok = await showConfirm("Are you absolutely sure you want to purge ALL data? This action cannot be undone.")
+    if (!ok) return
     try {
       const currentToken = localStorage.getItem('token')
       await axios.delete('http://localhost:5000/api/courses/clear-all', { headers: { Authorization: `Bearer ${currentToken}` } })
       setCourses([])
       setFilteredCourses([])
-      alert('All data purged successfully!')
+      showAlert('All data purged successfully!', "success")
     } catch (err) {
       console.error('Failed to purge data:', err)
-      alert(err.response?.data?.error || "Failed to purge data.")
+      showAlert(err.response?.data?.error || "Failed to purge data.", "error")
     }
   }
 
   const handleSeedBca = async () => {
-    if (!window.confirm("Are you sure you want to seed BCA data? This will add 36 BCA courses.")) return
+    const ok = await showConfirm("Are you sure you want to seed BCA data? This will add 36 BCA courses.")
+    if (!ok) return
     try {
        const currentToken = localStorage.getItem('token')
        const config = { headers: { Authorization: `Bearer ${currentToken}` } }
       await axios.post('http://localhost:5000/api/courses/seed-bca', {}, config)
       fetchCourses() // Re-fetch courses to show seeded data
-      alert('BCA data seeded successfully!')
+      showAlert('BCA data seeded successfully!', "success")
     } catch (err) {
       console.error('Failed to seed BCA data:', err)
-      alert(err.response?.data?.error || "Failed to seed BCA data.")
+      showAlert(err.response?.data?.error || "Failed to seed BCA data.", "error")
     }
   }
 

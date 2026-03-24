@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_super_secret_bridgify_key
 // User Registration Route (Public initially to bootstrap)
 export const registerUser = async (req, res) => {
   try {
-    const { fullName, email, password, role, department, phoneNo, rollNo, className, division } = req.body
+    const { fullName, email, password, role, department, phoneNo, rollNo, className, division, currentSemester } = req.body
 
     if (!fullName || !email || !password || !role || !department) {
       return res.status(400).json({ error: 'Full Name, email, password, role, and department are required' })
@@ -40,7 +40,8 @@ export const registerUser = async (req, res) => {
         isApproved: role === 'ADMIN' ? true : false, // Strictly force false for TEACHER and STUDENT
         rollNo: role === 'STUDENT' ? rollNo : null,
         className: role === 'STUDENT' ? className : null,
-        division: role === 'STUDENT' ? division : null
+        division: role === 'STUDENT' ? division : null,
+        currentSemester: role === 'STUDENT' ? (Number(currentSemester) || 1) : 1
       }
     })
 
