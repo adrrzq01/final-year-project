@@ -11,6 +11,7 @@ import MarksEntry from './pages/MarksEntry'
 import POMapping from './pages/POMapping'
 import Survey from './pages/Survey'
 import Reports from './pages/Reports'
+import CustomReport from './pages/CustomReport'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
 import StudentDashboard from './pages/StudentDashboard'
@@ -107,6 +108,7 @@ function App() {
                     <Route path="/mapping" element={<POMapping />} />
                     <Route path="/survey" element={<Survey />} />
                     <Route path="/reports" element={<Reports />} />
+                    <Route path="/custom-report" element={<CustomReport />} />
                   </Routes>
                 </ProtectedLayout>
               </SemesterProvider>

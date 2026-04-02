@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, Search, ChevronDown, Sun, Moon } from 'lucide-react'
+import { Bell, Search, ChevronDown, Sun, Moon, Clock } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
 const routeTitles = {
@@ -15,12 +16,43 @@ export default function Topbar() {
   const title = routeTitles[pathname] || 'Bridgify'
   const { dark, toggle } = useTheme()
 
+  const [tString, setTString] = useState('')
+
+  useEffect(() => {
+    const fn = () => {
+      const d = new Date()
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      
+      const day = days[d.getDay()]
+      const date = d.getDate()
+      const month = months[d.getMonth()]
+      const year = d.getFullYear()
+      
+      // Time logic
+      let hours = d.getHours()
+      const ampm = hours >= 12 ? 'PM' : 'AM'
+      hours = hours % 12
+      hours = hours ? hours : 12 // the hour '0' should be '12'
+      const mins = d.getMinutes().toString().padStart(2, '0')
+      const secs = d.getSeconds().toString().padStart(2, '0')
+
+      setTString(`${day}, ${date} ${month} ${year} | ${hours}:${mins}:${secs} ${ampm}`)
+    }
+    fn()
+    const intv = setInterval(fn, 1000)
+    return () => clearInterval(intv)
+  }, [])
+
   return (
     <header className="h-16 shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between px-6 shadow-sm z-10 transition-colors duration-300">
       {/* Page title */}
-      <div>
+      <div className="flex flex-col">
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-        <p className="text-xs text-slate-400 dark:text-slate-500">Welcome back, Prof. Ahmed</p>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <Clock size={12} className="text-indigo-400" />
+          <span>{tString}</span>
+        </div>
       </div>
 
       {/* Right controls */}

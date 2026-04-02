@@ -50,6 +50,68 @@ app.put('/api/admin/approve-user/:id', protect, requireAdmin, async (req, res) =
   }
 });
 
+// Admin Faculty Directory
+app.get('/api/admin/faculty', protect, requireAdmin, async (req, res) => {
+  try {
+    const faculty = await prisma.user.findMany({
+      where: { role: 'TEACHER' },
+      select: { id: true, fullName: true, email: true, departments: true, employmentType: true, isActive: true, isApproved: true }
+    });
+    res.json(faculty);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch faculty directory.' });
+  }
+});
+
+// Admin Student Directory
+app.get('/api/admin/directory/students', protect, requireAdmin, async (req, res) => {
+  try {
+    const students = await prisma.student.findMany({
+      include: {
+        academicClass: true,
+        marks: {
+          include: {
+            question: { include: { exam: true } }
+          }
+        }
+      }
+    });
+
+    const transformed = students.map(student => {
+      let totalISA = 0;
+      let totalSEE = 0;
+
+      for (let mark of student.marks) {
+        if (!mark.question || !mark.question.exam) continue;
+        const examName = mark.question.exam.name.toUpperCase();
+        if (examName.includes('ISA')) {
+          totalISA += Number(mark.obtainedMark || 0);
+        } else if (examName.includes('SEE')) {
+          totalSEE += Number(mark.obtainedMark || 0);
+        }
+      }
+
+      return {
+        id: student.id,
+        rollNo: student.rollNo,
+        name: student.name,
+        // Optional schema fallbacks ensuring rendering safety depending on which Phase migrations fired
+        department: student.department || 'BCA',
+        className: student.academicClass?.name || student.className || 'N/A',
+        division: student.division || 'A',
+        currentSemester: student.currentSemester || 1,
+        totalISA,
+        totalSEE
+      };
+    });
+
+    res.json(transformed);
+  } catch (err) {
+    console.error('Student Directory fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch student directory payload.' });
+  }
+});
+
 // Global Settings (Parity)
 app.get('/api/admin/settings', async (req, res) => {
   try {
@@ -174,11 +236,14 @@ app.delete('/api/academic-classes/:id', protect, requireAdmin, async (req, res) 
 })
 
 // 3. Get all Courses (with optional Department & Semester filters)
+// NOTE: No parity filtering here — Admins/Teachers must see ALL courses for management.
+// Parity filtering only applies to student-facing dashboard endpoints.
 app.get('/api/courses', async (req, res) => {
   try {
     const { department, semester } = req.query
-    
+
     const whereClause = {}
+
     if (department) whereClause.department = department
     if (semester) whereClause.semester = parseInt(semester)
 
@@ -188,7 +253,7 @@ app.get('/api/courses', async (req, res) => {
         academicClass: true,
         courseOutcomes: true,
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: [{ semester: 'asc' }, { code: 'asc' }]
     })
     res.json(courses)
   } catch (error) {
@@ -310,77 +375,7 @@ app.delete('/api/courses/clear-all', protect, requireAdmin, async (req, res) => 
   }
 })
 
-// 4e. Seed entire BCA Curriculum
-app.post('/api/courses/seed-bca', protect, requireAdmin, async (req, res) => {
-  try {
-    // Requires at least one Academic Class to act as the holder
-    let defaultClass = await prisma.academicClass.findFirst()
-    if (!defaultClass) {
-      defaultClass = await prisma.academicClass.create({ data: { name: 'FYBCA' } })
-    }
-
-    const bcaCourses = [
-      // Semester 1
-      { code: 'CSA-100', name: 'Problem Solving and Programming', category: 'Major', department: 'BCA', semester: 1, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'MAT-111', name: 'Elementary Mathematics', category: 'Minor', department: 'BCA', semester: 1, theoryCredits: 4, practicalCredits: 0 },
-      { code: 'PSY-131', name: 'Psychology of Adjustment', category: 'MC', department: 'BCA', semester: 1, theoryCredits: 3, practicalCredits: 0 },
-      { code: 'ENG-151', name: 'Communicative English: Spoken and Written', category: 'AEC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'CSA-142', name: 'Python Programming', category: 'SEC', department: 'BCA', semester: 1, theoryCredits: 1, practicalCredits: 2 },
-      { code: 'VAC-101', name: 'Environmental Studies II', category: 'VAC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'VAC-108', name: 'Introduction to Folktales of India', category: 'VAC', department: 'BCA', semester: 1, theoryCredits: 2, practicalCredits: 0 },
-      
-      // Semester 2
-      { code: 'MAT-100', name: 'Foundational Mathematics', category: 'Major', department: 'BCA', semester: 2, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-111', name: 'Computer System Fundamentals', category: 'Minor', department: 'BCA', semester: 2, theoryCredits: 4, practicalCredits: 0 },
-      { code: 'PSY-132', name: 'Environmental Psychology', category: 'MC', department: 'BCA', semester: 2, theoryCredits: 3, practicalCredits: 0 },
-      { code: 'ENG-152', name: 'Digital Content Creation in English', category: 'AEC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'CSA-143', name: 'Data Analytics Using Spreadsheets', category: 'SEC', department: 'BCA', semester: 2, theoryCredits: 1, practicalCredits: 2 },
-      { code: 'VAC-111', name: 'E-Waste Management', category: 'VAC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'VAC-117', name: 'Youth Empowerment using Mind Mapping', category: 'VAC', department: 'BCA', semester: 2, theoryCredits: 2, practicalCredits: 0 },
-      
-      // Semester 3
-      { code: 'CSA-200', name: 'Data Structures', category: 'Major', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-201', name: 'Database Management Systems', category: 'Major', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-211', name: 'Reasoning Techniques', category: 'Minor', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'PSY-231', name: 'Relationship Psychology', category: 'MC', department: 'BCA', semester: 3, theoryCredits: 3, practicalCredits: 0 },
-      { code: 'HIN-251', name: 'सम्प्रेषण कौशल (Communication Skill)', category: 'AEC', department: 'BCA', semester: 3, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'CSA-241', name: 'Multimedia Applications', category: 'SEC', department: 'BCA', semester: 3, theoryCredits: 1, practicalCredits: 2 },
-
-      // Semester 4
-      { code: 'CSA-202', name: 'Web App Development', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 1, practicalCredits: 3 },
-      { code: 'CSA-203', name: 'Agile Methodologies', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-204', name: 'Object Oriented Concepts', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-205', name: 'Web Technology', category: 'Major', department: 'BCA', semester: 4, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'CSA-221', name: 'Digital Marketing Fundamentals', category: 'Minor', department: 'BCA', semester: 4, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'HIN-252', name: 'संभाषण कला (Sambhashan kala)', category: 'AEC', department: 'BCA', semester: 4, theoryCredits: 2, practicalCredits: 0 },
-
-      // Semester 5
-      { code: 'CSA-300', name: 'UI- UX Design', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-301', name: 'Full Stack Development', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 1, practicalCredits: 3 },
-      { code: 'CSA-302', name: 'Cloud Computing', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-303', name: 'Internet Technologies', category: 'Major', department: 'BCA', semester: 5, theoryCredits: 2, practicalCredits: 0 },
-      { code: 'CSA-321', name: '(Internship) (VET)', category: 'Minor', department: 'BCA', semester: 5, theoryCredits: 4, practicalCredits: 0 },
-      { code: 'CSA-361', name: '(Summer Internship)', category: 'I', department: 'BCA', semester: 5, theoryCredits: 2, practicalCredits: 0 },
-
-      // Semester 6
-      { code: 'CSA-304', name: 'Cyber Security', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-305', name: 'Mobile App Development', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 1, practicalCredits: 3 },
-      { code: 'CSA-306', name: 'Machine Learning', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
-      { code: 'CSA-307', name: 'Project', category: 'Major', department: 'BCA', semester: 6, theoryCredits: 4, practicalCredits: 0 },
-      { code: 'CSA-322', name: 'Social Media Marketing & Analytics (VET)', category: 'Minor', department: 'BCA', semester: 6, theoryCredits: 3, practicalCredits: 1 },
-    ]
-
-    const seededRecords = await prisma.course.createMany({
-      data: bcaCourses.map(c => ({ ...c, academicClassId: defaultClass.id })),
-      skipDuplicates: true
-    })
-
-    res.json({ message: 'Successfully seeded the entire BCA curriculum.', seededCount: seededRecords.count })
-  } catch (error) {
-    console.error('Seed BCA courses error:', error)
-    res.status(500).json({ error: 'Failed to execute the BCA curriculum seed script.' })
-  }
-})
+// Removed Developmental Seed Route
 
 // 5. Get Exams for a specific course
 app.get('/api/exams', async (req, res) => {
@@ -431,8 +426,9 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
         }
       })
 
-      // 3. Iterate through main questions sequentially
-      for (const mainQ of questions) {
+      // 3. Iterate through main questions completely CONCURRENTLY
+      // By using Promise.all, we drop execution latency from O(N) to O(1) concurrent bursts
+      await Promise.all(questions.map(async (mainQ) => {
         const parent = await tx.question.create({
           data: {
             qNumber: mainQ.qNo,
@@ -440,29 +436,30 @@ app.post('/api/exams/blueprint', protect, requireTeacherOrAdmin, async (req, res
           }
         })
 
-        // 4. Iterate through sub-questions mapping efficiently
+        // 4. Execute bulk sub-question insertions instantly per main branch
         if (mainQ.subQuestions && mainQ.subQuestions.length > 0) {
-          for (const subQ of mainQ.subQuestions) {
-            
-            // Resolve CO ID directly from memory buffer
-            let courseOutcomeId = null
-            if (subQ.cos && subQ.cos.length > 0) {
-               const matchingCO = courseCOs.find(co => co.coNumber === subQ.cos[0])
-               if (matchingCO) courseOutcomeId = matchingCO.id
-            }
+          const subQuestionsData = mainQ.subQuestions.map(subQ => {
+             let courseOutcomeId = null
+             if (subQ.cos && subQ.cos.length > 0) {
+                const matchingCO = courseCOs.find(co => co.coNumber === subQ.cos[0])
+                if (matchingCO) courseOutcomeId = matchingCO.id
+             }
 
-            await tx.question.create({
-              data: {
-                qNumber: subQ.qNo,
-                maxMarks: Number(subQ.marks),
-                examId: exam.id, 
-                parentQuestionId: parent.id, 
-                courseOutcomeId
-              }
-            })
-          }
+             return {
+               qNumber: subQ.qNo,
+               maxMarks: Number(subQ.marks),
+               examId: exam.id, 
+               parentQuestionId: parent.id, 
+               courseOutcomeId
+             }
+          })
+
+          // Unleash Prisma's ultra-fast batch insertions
+          await tx.question.createMany({
+             data: subQuestionsData
+          })
         }
-      }
+      }))
 
       return exam
     }, { timeout: 15000, maxWait: 15000 })
@@ -747,12 +744,23 @@ app.get('/api/reports/detailed/:courseId', async (req, res) => {
 // 10. Master Dashboard Analytics (Protected)
 app.get('/api/dashboard', protect, async (req, res) => {
   try {
-    // 1. Get exact active entities count
-    const totalStudents = await prisma.student.count()
-    const activeCourses = await prisma.course.count()
+    const settings = await prisma.globalSettings.findFirst()
+    const activeParity = settings?.activeParity || 'ODD'
+    const allowedSemesters = activeParity === 'ODD' ? [1, 3, 5] : [2, 4, 6]
 
-    // 2. Fetch all courses logically to run the mass attainment engine
-    const courses = await prisma.course.findMany({ select: { id: true, name: true } })
+    // 1. Get exact active entities count bound to the targeted semester array
+    const totalStudents = await prisma.student.count({
+      where: { currentSemester: { in: allowedSemesters } }
+    })
+    const activeCourses = await prisma.course.count({
+      where: { semester: { in: allowedSemesters } }
+    })
+
+    // 2. Fetch all courses logically to run the mass attainment engine (isolated by parity)
+    const courses = await prisma.course.findMany({ 
+      where: { semester: { in: allowedSemesters } },
+      select: { id: true, name: true } 
+    })
     
     let totalAssessedCOs = 0
     let sumOfAllFinalCOLevels = 0
@@ -1099,6 +1107,160 @@ app.get('/api/student/marks', protect, async (req, res) => {
   }
 })
 
+// Custom Report: Full sub-question marks matrix for a course
+app.get('/api/reports/custom/:courseId', protect, async (req, res) => {
+  try {
+    const { courseId } = req.params
+
+    // Fetch course with all exams -> questions -> sub-questions -> COs -> marks
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        courseOutcomes: { orderBy: { coNumber: 'asc' } },
+        academicClass: {
+          include: {
+            students: { orderBy: { rollNo: 'asc' } }
+          }
+        },
+        exams: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            questions: {
+              where: { parentQuestionId: null }, // Top-level only
+              orderBy: { qNumber: 'asc' },
+              include: {
+                subQuestions: {
+                  orderBy: { qNumber: 'asc' },
+                  include: {
+                    courseOutcome: true,
+                    marks: { include: { student: true } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const students = course.academicClass?.students || []
+
+    // Build flat list of sub-questions (columns)
+    const columns = []
+    for (const exam of course.exams) {
+      for (const q of exam.questions) {
+        for (const sq of q.subQuestions) {
+          columns.push({
+            examName: exam.name,
+            examId: exam.id,
+            qLabel: `${q.qNumber}${sq.qNumber}`,
+            subQuestionId: sq.id,
+            coNumber: sq.courseOutcome?.coNumber || '-',
+            coId: sq.courseOutcomeId,
+            maxMarks: sq.maxMarks || 0,
+          })
+        }
+      }
+    }
+
+    // Build marks lookup: { [studentId]: { [subQuestionId]: marks } }
+    const marksMap = {}
+    for (const col of columns) {
+      for (const mark of col.marks || []) {
+        if (!marksMap[mark.studentId]) marksMap[mark.studentId] = {}
+        marksMap[mark.studentId][col.subQuestionId] = mark.obtainedMarks
+      }
+    }
+
+    // Re-attach marks to columns (they're on the sq already)
+    const columnsWithMarks = []
+    for (const exam of course.exams) {
+      for (const q of exam.questions) {
+        for (const sq of q.subQuestions) {
+          const marksArr = sq.marks || []
+          const marksLookup = {}
+          marksArr.forEach(m => { marksLookup[m.studentId] = m.obtainedMarks })
+          columnsWithMarks.push({
+            examName: exam.name,
+            qLabel: `${q.qNumber}${sq.qNumber}`,
+            subQuestionId: sq.id,
+            coNumber: sq.courseOutcome?.coNumber || '-',
+            coId: sq.courseOutcomeId,
+            maxMarks: sq.maxMarks || 0,
+            marksLookup, // { studentId: obtainedMarks }
+          })
+        }
+      }
+    }
+
+    // Build student rows
+    const studentRows = students.map(student => {
+      const marks = columnsWithMarks.map(col => col.marksLookup[student.id] ?? null)
+      return { rollNo: student.rollNo, name: student.name, studentId: student.id, marks }
+    })
+
+    // Calculate footer: count of students scoring >= 40% per column
+    const passCountPerCol = columnsWithMarks.map((col, ci) => {
+      const threshold = col.maxMarks * 0.4
+      let count = 0
+      studentRows.forEach(row => {
+        if (row.marks[ci] !== null && row.marks[ci] >= threshold) count++
+      })
+      return count
+    })
+
+    // Calculate CO Attainment per CO
+    // Group columns by CO
+    const coGroups = {}
+    columnsWithMarks.forEach((col, ci) => {
+      if (!col.coId) return
+      if (!coGroups[col.coId]) coGroups[col.coId] = { coNumber: col.coNumber, columns: [] }
+      coGroups[col.coId].columns.push({ ci, maxMarks: col.maxMarks })
+    })
+
+    const coAttainment = {}
+    for (const [coId, group] of Object.entries(coGroups)) {
+      let totalPossible = 0, totalPass = 0
+      group.columns.forEach(({ ci, maxMarks }) => {
+        const threshold = maxMarks * 0.4
+        studentRows.forEach(row => {
+          if (row.marks[ci] !== null) {
+            totalPossible++
+            if (row.marks[ci] >= threshold) totalPass++
+          }
+        })
+      })
+      const pct = totalPossible > 0 ? (totalPass / totalPossible) * 100 : 0
+      let level = 0
+      if (pct >= 70) level = 3
+      else if (pct >= 60) level = 2
+      else if (pct >= 50) level = 1
+      coAttainment[coId] = { coNumber: group.coNumber, percentage: pct, level }
+    }
+
+    res.json({
+      courseName: course.name,
+      courseCode: course.code,
+      columns: columnsWithMarks.map(c => ({
+        examName: c.examName,
+        qLabel: c.qLabel,
+        subQuestionId: c.subQuestionId,
+        coNumber: c.coNumber,
+        coId: c.coId,
+        maxMarks: c.maxMarks,
+      })),
+      studentRows,
+      passCountPerCol,
+      coAttainment: Object.values(coAttainment),
+    })
+  } catch (error) {
+    console.error('Custom report error:', error)
+    res.status(500).json({ error: 'Failed to generate custom report.' })
+  }
+})
+
 const bootstrapClasses = async () => {
   try {
     const classes = [
@@ -1148,8 +1310,42 @@ const bootstrapDefaultUsers = async () => {
   }
 }
 
+const bootstrapPOsAndPSOs = async () => {
+  try {
+    const pos = [
+      { code: 'PO1', description: 'Apply knowledge of computing fundamentals, computing specialization, mathematics, and domain knowledge appropriate for the computing specialization to the abstraction and conceptualization of computing models from defined problems and requirements.' },
+      { code: 'PO2', description: 'Identify, formulate, review research literature, and analyze complex computing problems reaching substantiated conclusions using first principles of mathematics, computing sciences, and relevant domain disciplines.' },
+      { code: 'PO3', description: 'Design solutions for complex computing problems and design system components or processes that meet the specified needs with appropriate consideration for the public health and safety, cultural, societal, and environmental considerations.' },
+      { code: 'PO4', description: 'Use research-based knowledge and research methods including design of experiments, analysis and interpretation of data, and synthesis of the information to provide valid conclusions.' },
+      { code: 'PO5', description: 'Create, select, and apply appropriate techniques, resources, and modern computing tools including prediction and modeling to complex computing activities with an understanding of the limitations.' },
+      { code: 'PO6', description: 'Apply reasoning informed by the contextual knowledge to assess societal, health, safety, legal and cultural issues and the consequent responsibilities relevant to the professional computing practice.' },
+      { code: 'PO7', description: 'Understand the impact of the professional computing solutions in societal and environmental contexts, and demonstrate the knowledge of, and need for sustainable development.' },
+      { code: 'PO8', description: 'Apply ethical principles and commit to professional ethics and responsibilities and norms of the professional computing practice.' },
+      { code: 'PO9', description: 'Function effectively as an individual, and as a member or leader in diverse teams, and in multidisciplinary settings.' },
+      { code: 'PO10', description: 'Communicate effectively with the computing community and with society at large, such as, being able to comprehend and write effective reports and design documentation, make effective presentations, and give and receive clear instructions.' },
+      { code: 'PO11', description: 'Demonstrate knowledge and understanding of the computing and management principles and apply these to one\'s own work, as a member and leader in a team, to manage projects and in multidisciplinary environments.' },
+      { code: 'PO12', description: 'Recognize the need for and have the preparation and ability to engage in independent and life-long learning in the broadest context of technological change.' },
+    ]
+    const psos = [
+      { code: 'PSO1', description: 'Apply programming languages, frameworks and emerging technologies to develop innovative solutions for domain-specific industry problems.' },
+      { code: 'PSO2', description: 'Design and implement solutions using critical thinking, data management and systematic approaches to analyze and solve complex computational problems.' },
+      { code: 'PSO3', description: 'Integrate cyber security, cloud computing, AI and machine learning technologies to build secure, scalable and intelligent systems.' },
+    ]
+    for (const po of pos) {
+      await prisma.programOutcome.upsert({ where: { code: po.code }, update: {}, create: po })
+    }
+    for (const pso of psos) {
+      await prisma.programSpecificOutcome.upsert({ where: { code: pso.code }, update: {}, create: pso })
+    }
+    console.log('✅ Program Outcomes (PO1-PO12) and PSOs (PSO1-PSO3) Seeded')
+  } catch(e) {
+    console.warn('Could not bootstrap POs/PSOs:', e.message)
+  }
+}
+
 app.listen(PORT, async () => {
   console.log(`✅ Server running on http://localhost:${PORT}`)
   await bootstrapClasses()
   await bootstrapDefaultUsers()
+  await bootstrapPOsAndPSOs()
 })

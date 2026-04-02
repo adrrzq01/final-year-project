@@ -1,30 +1,34 @@
 
 import { useState, useEffect } from 'react'
 import { 
-  Users, BookOpen, Search, Plus, ListFilter, Trash2, Edit2, ChevronDown, CheckCircle2, ShieldAlert,
-  Database, MoreVertical
+  Users, BookOpen, Search, Plus, Trash2, Edit2, ShieldAlert,
+  MoreVertical, X, Save
 } from 'lucide-react'
 import axios from 'axios'
 import AddCourseModal from '../components/AddCourseModal'
-import { useSemester } from '../context/SemesterContext'
+import { useAlert } from '../context/AlertContext'
 
 export default function Classes() {
   const [error, setError] = useState('')
   
   // Filtering States
   const [selectedDepartment, setSelectedDepartment] = useState('BCA')
-  const { activeSemester: selectedSemester, setActiveSemester: setSelectedSemester } = useSemester()
+  const [selectedSemester, setSelectedSemester] = useState('') // '' = All semesters
   const [searchQuery, setSearchQuery] = useState('')
   
   // Data states
   const [courses, setCourses] = useState([])
   const [filteredCourses, setFilteredCourses] = useState([])
   const [loading, setLoading] = useState(true)
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false) // Renamed from isModalOpen
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState(null)
+  const [editCourse, setEditCourse] = useState(null) // course object to edit
+  const [editForm, setEditForm] = useState({ name: '', category: '', theoryCredits: 0, practicalCredits: 0 })
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
   
   const userString = localStorage.getItem('user')
   const user = userString ? JSON.parse(userString) : null
+  const { showAlert, showConfirm } = useAlert()
 
   useEffect(() => {
     fetchCourses()
@@ -43,6 +47,7 @@ export default function Classes() {
       // Pass filters to backend if BCA is selected
       const queryParams = new URLSearchParams()
       if (selectedDepartment) queryParams.append('department', selectedDepartment)
+      // Only send semester filter when user explicitly picks one
       if (selectedDepartment === 'BCA' && selectedSemester) {
         queryParams.append('semester', selectedSemester)
       }
@@ -113,20 +118,40 @@ export default function Classes() {
     }
   }
 
-  const handleSeedBca = async () => {
-    const ok = await showConfirm("Are you sure you want to seed BCA data? This will add 36 BCA courses.")
-    if (!ok) return
+  const openEditModal = (course) => {
+    setEditCourse(course)
+    setEditForm({
+      name: course.name,
+      category: course.category,
+      theoryCredits: course.theoryCredits,
+      practicalCredits: course.practicalCredits
+    })
+    setActiveDropdown(null)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editCourse) return
+    setIsSavingEdit(true)
     try {
-       const currentToken = localStorage.getItem('token')
-       const config = { headers: { Authorization: `Bearer ${currentToken}` } }
-      await axios.post('http://localhost:5000/api/courses/seed-bca', {}, config)
-      fetchCourses() // Re-fetch courses to show seeded data
-      showAlert('BCA data seeded successfully!', "success")
+      const token = localStorage.getItem('token')
+      const res = await axios.put(
+        `http://localhost:5000/api/courses/${editCourse.id}`,
+        editForm,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      // Update local state
+      setCourses(prev => prev.map(c => c.id === editCourse.id ? { ...c, ...res.data } : c))
+      setFilteredCourses(prev => prev.map(c => c.id === editCourse.id ? { ...c, ...res.data } : c))
+      setEditCourse(null)
+      showAlert('Course updated successfully!', 'success')
     } catch (err) {
-      console.error('Failed to seed BCA data:', err)
-      showAlert(err.response?.data?.error || "Failed to seed BCA data.", "error")
+      showAlert(err.response?.data?.error || 'Failed to update course.', 'error')
+    } finally {
+      setIsSavingEdit(false)
     }
   }
+
+   // Developmental Seed Block entirely dismantled
 
   // Array of tailwind color combinations for cards
   const themeColors = [
@@ -158,12 +183,6 @@ export default function Classes() {
                 title="Wipe database clean of all Courses"
              >
                 <Trash2 size={18} /> Purge All Data
-             </button>
-             <button 
-                onClick={handleSeedBca}
-                className="flex items-center gap-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-4 py-2.5 rounded-xl hover:bg-emerald-200 dark:hover:bg-emerald-900/60 font-semibold text-sm transition-all shadow-sm shadow-emerald-200 dark:shadow-none"
-             >
-                <Database size={18} /> Seed 36 BCA Courses
              </button>
             <button 
               onClick={() => setIsAddModalOpen(true)}
@@ -202,6 +221,7 @@ export default function Classes() {
               onChange={e => setSelectedSemester(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
             >
+              <option value="">All Semesters</option>
               <option value="1">Semester 1</option>
               <option value="2">Semester 2</option>
               <option value="3">Semester 3</option>
@@ -306,13 +326,10 @@ export default function Classes() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button 
-                            className="w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                            onClick={() => {
-                              alert('Edit feature coming soon!')
-                              setActiveDropdown(null)
-                            }}
+                            className="w-full text-left px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors flex items-center gap-2"
+                            onClick={() => openEditModal(course)}
                           >
-                            Edit Course
+                            <Edit2 size={14} /> Edit Course
                           </button>
                           <button 
                             className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
@@ -365,12 +382,83 @@ export default function Classes() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Add Course Modal */}
       <AddCourseModal 
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
         onCourseAdded={handleCourseAdded} 
       />
+
+      {/* Edit Course Modal */}
+      {editCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Edit2 size={16} className="text-indigo-500" /> Edit Course
+              </h3>
+              <button onClick={() => setEditCourse(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Course Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
+                <select
+                  value={editForm.category}
+                  onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {['Major', 'Minor', 'AEC', 'SEC', 'VAC', 'MC', 'I'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Theory Credits</label>
+                  <input
+                    type="number" min={0} max={6}
+                    value={editForm.theoryCredits}
+                    onChange={e => setEditForm(f => ({ ...f, theoryCredits: Number(e.target.value) }))}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Practical Credits</label>
+                  <input
+                    type="number" min={0} max={6}
+                    value={editForm.practicalCredits}
+                    onChange={e => setEditForm(f => ({ ...f, practicalCredits: Number(e.target.value) }))}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-700">
+              <button onClick={() => setEditCourse(null)} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-60 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+              >
+                <Save size={14} /> {isSavingEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { NavLink, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Users, BookOpen, Upload, LayoutDashboard,
-  Settings, LogOut, GraduationCap, ClipboardList, PenTool, Link, ClipboardCheck, FileSpreadsheet
+  Settings, LogOut, GraduationCap, ClipboardList, PenTool, Link, ClipboardCheck, FileSpreadsheet, TableProperties
 } from 'lucide-react'
 import logo from '../assets/Logo.png'
 import { useSemester } from '../context/SemesterContext'
@@ -14,7 +14,8 @@ const menuItems = [
   { path: '/marks', icon: PenTool, label: 'Marks Entry' },
   { path: '/mapping', icon: Link, label: 'PO Mapping' },
   { path: '/survey', icon: ClipboardCheck, label: 'Exit Survey' },
-  { path: '/reports', icon: FileSpreadsheet, label: 'Custom Reports' },
+  { path: '/reports', icon: FileSpreadsheet, label: 'CO Reports' },
+  { path: '/custom-report', icon: TableProperties, label: 'Marks Matrix' },
 ]
 
 export default function Sidebar() {

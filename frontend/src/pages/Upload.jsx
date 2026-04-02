@@ -11,6 +11,7 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false)
   const [uploaded, setUploaded] = useState(false)
   const [errorText, setErrorText] = useState('')
+  const [previewData, setPreviewData] = useState([])
   const [recentUploads, setRecentUploads] = useState([])
   const inputRef = useRef(null)
 
@@ -32,7 +33,7 @@ export default function Upload() {
     if (file) handleFile(file)
   }
 
-  const handleFile = (file) => {
+  const handleFile = async (file) => {
     if (!file.name.endsWith('.csv')) {
       setErrorText('Please upload a valid .csv file')
       return
@@ -40,6 +41,16 @@ export default function Upload() {
     setErrorText('')
     setUploadedFile(file)
     setUploaded(false)
+    
+    try {
+      const parsed = await processCSV(file)
+      if (!parsed || parsed.length === 0) {
+         throw new Error("File sequence is blank or invalid CSV format.")
+      }
+      setPreviewData(parsed)
+    } catch(err) {
+      setErrorText("Failed to parse CSV matrix: " + err.message)
+    }
   }
 
   const processCSV = (file) => {
@@ -58,7 +69,7 @@ export default function Upload() {
     setErrorText('')
 
     try {
-      const data = await processCSV(uploadedFile)
+      const data = previewData
       
       // Validation
       if (!classSelected) {
@@ -107,6 +118,7 @@ export default function Upload() {
     setUploaded(false)
     setUploading(false)
     setErrorText('')
+    setPreviewData([])
   }
 
   return (
@@ -216,7 +228,7 @@ export default function Upload() {
                       Sending…
                     </>
                   ) : (
-                    <><UploadCloud size={15} /> Upload File</>
+                    <><UploadCloud size={15} /> Confirm & Save</>
                   )}
                 </button>
                 <button
@@ -230,6 +242,41 @@ export default function Upload() {
           </div>
         )}
       </div>
+
+      {/* Preview Table */}
+      {previewData.length > 0 && !uploaded && !uploading && (
+        <div className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden shadow-sm transition-all duration-300 animate-in slide-in-from-top-4">
+           <div className="bg-indigo-50 dark:bg-indigo-900/40 px-5 py-3.5 border-b border-indigo-100 dark:border-indigo-800 flex justify-between items-center">
+              <h3 className="text-sm font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-2"><FileSpreadsheet size={16}/> Data Preview <span className="text-xs font-semibold px-2 py-0.5 bg-indigo-200 dark:bg-indigo-800 rounded-md text-indigo-800 dark:text-indigo-200">{previewData.length} records</span></h3>
+              <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">Please verify data mappings before concluding</p>
+           </div>
+           <div className="max-h-72 overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400 border-collapse">
+                 <thead className="bg-white dark:bg-slate-900/80 text-[11px] uppercase tracking-wider font-bold text-slate-500 sticky top-0 backdrop-blur-md z-10 shadow-sm">
+                    <tr>
+                      {Object.keys(previewData[0] || {}).map(key => (
+                         <th key={key} className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/60">{key}</th>
+                      ))}
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {previewData.slice(0, 100).map((row, i) => (
+                       <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                          {Object.values(row).map((val, idx) => (
+                             <td key={idx} className="px-5 py-2.5 truncate max-w-[200px] border-r border-slate-50 dark:border-slate-700/20 last:border-r-0">{String(val)}</td>
+                          ))}
+                       </tr>
+                    ))}
+                 </tbody>
+              </table>
+              {previewData.length > 100 && (
+                <div className="text-center py-2.5 text-xs text-slate-400 font-bold bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800/60 shadow-inner">
+                   Showing exact first 100 rows. Remaining {(previewData.length - 100)} structurally verified implicitly.
+                </div>
+              )}
+           </div>
+        </div>
+      )}
 
       {/* Format Guide */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

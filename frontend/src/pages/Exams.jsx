@@ -15,11 +15,13 @@ const bloomColor = {
   Create: 'bg-rose-50 dark:bg-rose-900/40 text-rose-500 dark:text-rose-300',
 }
 
-const examTypes = [
-  { name: 'ISA-1', label: 'ISA 1', target: 15 },
-  { name: 'ISA-2', label: 'ISA 2', target: 15 },
-  { name: 'ISA-3', label: 'ISA 3', target: 15 },
-  { name: 'SEE', label: 'SEE', target: 85 }
+const allExams = [
+  { name: 'ISA-1(T)', label: 'ISA-1 (Theory)', target: 15, isTheory: true },
+  { name: 'ISA-1(P)', label: 'ISA-1 (Practical)', target: 15, isPractical: true },
+  { name: 'ISA-2', label: 'ISA-2', target: 15, isTheory: true },
+  { name: 'ISA-3', label: 'ISA-3', target: 15, isTheory: true },
+  { name: 'SEE(T)', label: 'SEE (Theory)', target: 85, isTheory: true },
+  { name: 'SEE(P)', label: 'SEE (Practical)', target: 85, isPractical: true }
 ]
 
 const hindiVowels = ['अ', 'आ', 'इ', 'ई', 'उ', 'ऊ', 'ऋ', 'ए', 'ऐ', 'ओ', 'औ']
@@ -28,15 +30,27 @@ const hindiConsonants = ['क', 'ख', 'ग', 'घ', 'ङ', 'च', 'छ', 'ज',
 export default function Exams() {
   const [courses, setCourses] = useState([])
   const [questions, setQuestions] = useState([]) // start empty
-  const [examType, setExamType] = useState('ISA-1')
+  const [examType, setExamType] = useState('ISA-1(T)')
   const [saved, setSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [courseSelected, setCourseSelected] = useState('')
   const [existingExams, setExistingExams] = useState([])
+  const [customTarget, setCustomTarget] = useState('')
   const { showAlert, showConfirm } = useAlert()
 
   const activeCourseObj = courses.find((c) => c.id === courseSelected)
   const isLangCourse = activeCourseObj && (activeCourseObj.name.toLowerCase().includes('hindi') || activeCourseObj.name.toLowerCase().includes('konkani'))
+
+  let availableExams = []
+  if (!activeCourseObj) {
+    availableExams = allExams.filter(e => e.isTheory)
+  } else {
+    availableExams = allExams.filter(e => {
+      if (e.isTheory && activeCourseObj.theoryCredits > 0) return true
+      if (e.isPractical && activeCourseObj.practicalCredits > 0) return true
+      return false
+    })
+  }
 
   useEffect(() => {
     fetchCourses()
@@ -69,12 +83,19 @@ export default function Exams() {
   const handleDeleteExam = async (id) => {
     const ok = await showConfirm("Are you sure you want to permanently delete this exam blueprint? This will also wipe any student marks associated with it.")
     if (!ok) return
+    
+    // OPTIMISTIC UPDATE: Instantly remove it from the User's screen
+    setExistingExams(prev => prev.filter(ex => ex.id !== id))
+    
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      await axios.delete(`http://localhost:5000/api/exams/${id}`, config)
-      setSaved(prev => !prev) // Toggle to trigger refetch
+      // Issue background deletion without freezing UI
+      axios.delete(`http://localhost:5000/api/exams/${id}`, config).catch(err => {
+         throw err
+      })
       showAlert("Exam deleted successfully.", "success")
     } catch(err) {
+      setSaved(prev => !prev) // Trigger refetch to restore state if deletion failed
       showAlert("Failed to delete exam", "error")
     }
   }
@@ -169,7 +190,8 @@ export default function Exams() {
     return acc + q.subQuestions.reduce((sum, sq) => sum + Number(sq.marks || 0), 0)
   }, 0)
 
-  const currentTarget = examTypes.find(t => t.name === examType)?.target || 15
+  const defaultTarget = availableExams.find(t => t.name === examType)?.target || 15
+  const currentTarget = customTarget !== '' ? Number(customTarget) : defaultTarget
   const isMarksValid = totalMarks === currentTarget
 
   const handleSaveBlueprint = async () => {
@@ -187,6 +209,8 @@ export default function Exams() {
         questions: questions
       }, config)
       setSaved(true)
+      setQuestions([])
+      setCustomTarget('')
       showAlert('Blueprint securely saved!', 'success')
     } catch (err) {
       console.error(err)
@@ -255,7 +279,7 @@ export default function Exams() {
             }}
             className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-8 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer min-w-40 transition-colors duration-300"
           >
-            {examTypes.map(type => (
+            {availableExams.map(type => (
               <option key={type.name} value={type.name}>{type.label}</option>
             ))}
           </select>
@@ -268,34 +292,21 @@ export default function Exams() {
               ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
               : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
           }`}>
-            Total Marks: <span className="text-sm ml-1">{totalMarks} / {currentTarget}</span>
+            Total Marks: <span className="text-sm ml-1 flex items-center">{totalMarks} / 
+               <input 
+                  type="number"
+                  step="0.5"
+                  placeholder={currentTarget}
+                  value={customTarget !== '' ? customTarget : currentTarget}
+                  onChange={(e) => setCustomTarget(e.target.value)}
+                  className="w-12 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md text-center py-0.5 ml-2 font-black shadow-inner focus:outline-none focus:ring-1 focus:ring-indigo-500"
+               />
+            </span>
           </div>
         )}
       </div>
 
-      {/* Existing Exams List */}
-      {existingExams.length > 0 && (
-        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-5 shadow-sm mt-4">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-            <FileText size={16} className="text-indigo-500" /> Saved Blueprints for this Course
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            {existingExams.map(ex => (
-              <div key={ex.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 pl-4 pr-1.5 py-1.5 rounded-xl shadow-sm">
-                <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">{ex.name}</span>
-                <span className="text-[11px] font-bold text-slate-500 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">{ex.totalMarks} Marks</span>
-                <button 
-                  onClick={() => handleDeleteExam(ex.id)}
-                  title="Delete Blueprint"
-                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1.5 hover:bg-rose-50 dark:hover:bg-rose-900/40 rounded-lg transition-colors focus:outline-none"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Placeholder to retain logical layout spacing */}
 
       {/* Empty state OR table */}
       {questions.length === 0 ? (
@@ -332,7 +343,7 @@ export default function Exams() {
                 {questions.map((q, i) => (
                   <React.Fragment key={q.id}>
                     {/* Main Question Row */}
-                    <tr className="bg-slate-50/50 dark:bg-slate-800/40 group border-t-2 border-slate-200 dark:border-slate-700/80">
+                    <tr key={`main-${q.id}`} className="bg-slate-50/50 dark:bg-slate-800/40 group border-t-2 border-slate-200 dark:border-slate-700/80">
                       <td className="px-5 py-3 text-slate-400 dark:text-slate-500 font-bold text-xs">{i + 1}</td>
                       <td className="px-5 py-3">
                         <input
@@ -362,7 +373,7 @@ export default function Exams() {
 
                     {/* Sub-Questions Rows */}
                     {q.subQuestions.map((sq, si) => (
-                      <tr key={sq.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors group">
+                      <tr key={`sub-${q.id}-${sq.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors group">
                         <td className="px-5 py-3"></td>
                         <td className="px-5 py-3 pl-8 relative">
                           {/* Visual hierarchy tree line */}
@@ -393,7 +404,8 @@ export default function Exams() {
                         <td className="px-5 py-3">
                           <input
                             type="number"
-                            min={1}
+                            min={0.5}
+                            step="0.5"
                             value={sq.marks}
                             onChange={(e) => updateSubQ(q.id, sq.id, 'marks', Number(e.target.value))}
                             className="w-14 text-sm font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center"
@@ -438,6 +450,82 @@ export default function Exams() {
              >
                <Plus size={15} /> Add Another Main Question
              </button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing Exams Table */}
+      {existingExams.length > 0 && (
+        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-6 shadow-sm mt-8 transition-all">
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+            <FileText size={18} className="text-indigo-500" /> Created Blueprints
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
+                <tr>
+                  <th className="px-4 py-3 rounded-tl-xl">Subject</th>
+                  <th className="px-4 py-3">Exam Type</th>
+                  <th className="px-4 py-3">Total Marks</th>
+                  <th className="px-4 py-3">Questions</th>
+                  <th className="px-4 py-3 rounded-tr-xl">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                {existingExams.map(ex => (
+                  <tr key={ex.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                      {activeCourseObj?.code} - {activeCourseObj?.name}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
+                      {ex.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold">
+                        {ex.totalMarks} Marks
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                      {ex.questions?.length || 0} Main Qs
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setExamType(ex.name)
+                            setCustomTarget(ex.totalMarks.toString())
+                            if (ex.questions) {
+                              const restored = ex.questions.map((q, i) => ({
+                                id: q.id || (i+1),
+                                qNo: q.qNumber,
+                                subQuestions: (q.subQuestions || []).map((sq, sqId) => ({
+                                  id: sq.id || (sqId+1),
+                                  qNo: sq.qNumber,
+                                  bloom: 'Apply', // Not stored in schema currently
+                                  marks: sq.maxMarks,
+                                  cos: sq.courseOutcome ? [`CO${sq.courseOutcome.coNumber.replace('CO', '')}`] : []
+                                }))
+                              }))
+                              setQuestions(restored)
+                            }
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                          className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-400 dark:hover:bg-indigo-900/60 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                        >
+                          View / Edit
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteExam(ex.id)}
+                          className="bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-900/60 p-1.5 rounded-lg transition-all focus:outline-none"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

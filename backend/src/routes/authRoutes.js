@@ -8,14 +8,22 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_super_secret_bridgify_key
 // User Registration Route (Public initially to bootstrap)
 export const registerUser = async (req, res) => {
   try {
-    const { fullName, email, password, role, department, phoneNo, rollNo, className, division, currentSemester } = req.body
+    const { 
+      fullName, email, password, role, phoneNo,
+      department, rollNo, className, division, currentSemester, // Student specific
+      departments, employmentType, assignedSemester, assignedCourseIds // Teacher specific
+    } = req.body
 
-    if (!fullName || !email || !password || !role || !department) {
-      return res.status(400).json({ error: 'Full Name, email, password, role, and department are required' })
+    if (!fullName || !email || !password || !role) {
+      return res.status(400).json({ error: 'Full Name, email, password, and role are required' })
     }
 
-    if (role === 'STUDENT' && (!rollNo || !className || !division)) {
-       return res.status(400).json({ error: 'Students must provide Roll No, Class, and Division' })
+    if (role === 'STUDENT' && (!department || !rollNo || !className || !division)) {
+       return res.status(400).json({ error: 'Students must provide Department, Roll No, Class, and Division' })
+    }
+    
+    if (role === 'TEACHER' && (!departments || departments.length === 0)) {
+       return res.status(400).json({ error: 'Teachers must select at least one department' })
     }
 
     // Check if user exists
@@ -35,13 +43,19 @@ export const registerUser = async (req, res) => {
         email,
         password: hashedPassword,
         role: role,
-        department,
         phoneNo,
         isApproved: role === 'ADMIN' ? true : false, // Strictly force false for TEACHER and STUDENT
+        // Student Specific
+        department: role === 'STUDENT' ? department : null,
         rollNo: role === 'STUDENT' ? rollNo : null,
         className: role === 'STUDENT' ? className : null,
         division: role === 'STUDENT' ? division : null,
-        currentSemester: role === 'STUDENT' ? (Number(currentSemester) || 1) : 1
+        currentSemester: role === 'STUDENT' ? (Number(currentSemester) || 1) : 1,
+        // Teacher Specific
+        departments: role === 'TEACHER' ? (departments || []) : [],
+        employmentType: role === 'TEACHER' ? (employmentType || 'PERMANENT') : 'PERMANENT',
+        assignedSemester: role === 'TEACHER' && employmentType === 'TEMPORARY' ? Number(assignedSemester) : null,
+        assignedCourseIds: role === 'TEACHER' && employmentType === 'TEMPORARY' ? assignedCourseIds : null
       }
     })
 
@@ -76,6 +90,25 @@ export const loginUser = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password)
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' })
+    }
+
+    // Auto-Deactivation Logic for Temporary Faculty
+    if (user.role === 'TEACHER' && user.employmentType === 'TEMPORARY') {
+      const settings = await prisma.globalSettings.findFirst()
+      const activeParity = settings?.activeParity || 'ODD'
+      const allowedSemesters = activeParity === 'ODD' ? [1, 3, 5] : [2, 4, 6]
+
+      if (user.assignedSemester && !allowedSemesters.includes(user.assignedSemester)) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { isActive: false }
+        })
+        return res.status(403).json({ error: 'Term expired. Please re-register or contact Admin.' })
+      }
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ error: 'Account is inactive. Term expired or suspended.' })
     }
 
     // Generate JSON Web Token

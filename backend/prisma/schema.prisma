@@ -18,12 +18,17 @@ model User {
   email     String   @unique
   password  String
   fullName  String
-  department String  // BCA, BA, BCOM, BBA
-  phoneNo   String?
-  role      Role     @default(TEACHER)
-  
+  department String? // Optional string fallback for Students
+  phoneNo    String?
+  role       Role    @default(TEACHER)
+
   // Teacher Specific
-  isApproved Boolean @default(false)
+  departments       String[] @default([]) // For multi-stream access
+  employmentType    String   @default("PERMANENT") // "PERMANENT" or "TEMPORARY"
+  isActive          Boolean  @default(true) // Allows soft deletion mappings
+  assignedSemester  Int?     // Restricted semester mapping
+  assignedCourseIds String?  // Optional filtered CSV of course IDs
+  isApproved        Boolean  @default(false)
   
   // Student Specific
   rollNo    String?  @unique
@@ -99,7 +104,7 @@ model CourseOutcome {
 model Exam {
   id         String   @id @default(uuid())
   name       String // e.g., "ISA-1", "End-Semester"
-  totalMarks Int
+  totalMarks Float
   courseId   String
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())

@@ -7,9 +7,14 @@ import { useAlert } from '../context/AlertContext'
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([])
+  const [facultyDir, setFacultyDir] = useState([])
+  const [studentDir, setStudentDir] = useState([])
+
   const [loading, setLoading] = useState(true)
+  const [dirLoading, setDirLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('TEACHER')
+  const [activeTab, setActiveTab] = useState('PENDING')
+  const [searchTerm, setSearchTerm] = useState('')
   const { showAlert } = useAlert()
 
   // Analytics state
@@ -20,9 +25,27 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchPendingUsers()
+    fetchDirectories()
     fetchAnalytics()
     fetchSettings()
   }, [])
+
+  const fetchDirectories = async () => {
+    try {
+      setDirLoading(true)
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      const [facRes, studRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/admin/faculty', config),
+        axios.get('http://localhost:5000/api/admin/directory/students', config)
+      ])
+      setFacultyDir(facRes.data)
+      setStudentDir(studRes.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setDirLoading(false)
+    }
+  }
 
   const fetchSettings = async () => {
     try {
@@ -156,94 +179,191 @@ export default function AdminDashboard() {
         </div>
       ) : null}
 
-      {/* Pending Users Section */}
+      {/* Master Data Sections */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700/60 transition-colors duration-300">
         
         {/* Tab Header */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 border-b border-slate-200 dark:border-slate-700/60 pb-4">
-           <button 
-             onClick={() => setActiveTab('TEACHER')}
-             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all focus:outline-none ${
-               activeTab === 'TEACHER' 
-                 ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
-                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-             }`}
-           >
-             <UserCheck size={18} />
-             Pending Faculty
-             {pendingTeachers.length > 0 && (
-               <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 px-2 py-0.5 rounded-md text-xs ml-1">
-                 {pendingTeachers.length}
-               </span>
-             )}
-           </button>
-           <button 
-             onClick={() => setActiveTab('STUDENT')}
-             className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all focus:outline-none ${
-               activeTab === 'STUDENT' 
-                 ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
-                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-             }`}
-           >
-             <GraduationCap size={18} />
-             Pending Students
-             {pendingStudents.length > 0 && (
-               <span className="bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 px-2 py-0.5 rounded-md text-xs ml-1">
-                 {pendingStudents.length}
-               </span>
-             )}
-           </button>
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 border-b border-slate-200 dark:border-slate-700/60 pb-4">
+           <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 custom-scrollbar">
+             <button 
+               onClick={() => { setActiveTab('PENDING'); setSearchTerm(''); }}
+               className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all focus:outline-none ${
+                 activeTab === 'PENDING' 
+                   ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
+                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+               }`}
+             >
+               <ShieldCheck size={18} />
+               Pending Approvals
+               {users.length > 0 && (
+                 <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 px-2 py-0.5 rounded-md text-xs ml-1">
+                   {users.length}
+                 </span>
+               )}
+             </button>
+             <button 
+               onClick={() => { setActiveTab('FACULTY'); setSearchTerm(''); }}
+               className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all focus:outline-none ${
+                 activeTab === 'FACULTY' 
+                   ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
+                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+               }`}
+             >
+               <UserCheck size={18} />
+               Faculty Directory
+             </button>
+             <button 
+               onClick={() => { setActiveTab('STUDENTS'); setSearchTerm(''); }}
+               className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all focus:outline-none ${
+                 activeTab === 'STUDENTS' 
+                   ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 shadow-sm' 
+                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+               }`}
+             >
+               <GraduationCap size={18} />
+               Student Directory
+             </button>
+           </div>
+           
+           {(activeTab === 'FACULTY' || activeTab === 'STUDENTS') && (
+             <input
+               type="text"
+               placeholder={`Search ${activeTab.toLowerCase()}...`}
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full sm:w-64 px-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+             />
+           )}
         </div>
 
-        {loading ? (
-           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-500" /></div>
-        ) : error ? (
-           <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-sm font-medium"><AlertCircle size={16}/> {error}</div>
-        ) : currentList.length === 0 ? (
-           <div className="text-center p-10 flex flex-col items-center gap-3 text-slate-500 dark:text-slate-400 text-sm bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-             <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm">
-               <ShieldCheck size={24} className="text-emerald-500" />
-             </div>
-             <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
-             <p className="text-xs">No pending {activeTab.toLowerCase()} approvals at this time.</p>
-           </div>
-        ) : (
+        {activeTab === 'PENDING' && (
+          <>
+            {loading ? (
+               <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-500" /></div>
+            ) : error ? (
+               <div className="p-4 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-sm font-medium"><AlertCircle size={16}/> {error}</div>
+            ) : users.length === 0 ? (
+               <div className="text-center p-10 flex flex-col items-center gap-3 text-slate-500 dark:text-slate-400 text-sm bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                 <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-sm">
+                   <ShieldCheck size={24} className="text-emerald-500" />
+                 </div>
+                 <p className="font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
+                 <p className="text-xs">No pending approvals at this time.</p>
+               </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
+                    <tr>
+                      <th className="px-4 py-3 rounded-tl-xl">Identify</th>
+                      <th className="px-4 py-3">Full Name</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3 rounded-tr-xl">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
+                    {users.map(user => (
+                      <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">
+                          {user.role === 'STUDENT' ? `Roll: ${user.rollNo || 'N/A'}` : 'Faculty Entry'}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                          {user.fullName}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${user.role === 'TEACHER' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button 
+                            onClick={() => handleApprove(user.id, user.role === 'TEACHER')}
+                            className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                          >
+                            Approve Access
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'FACULTY' && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
                 <tr>
-                  <th className="px-4 py-3 rounded-tl-xl">Full Name</th>
+                  <th className="px-4 py-3 rounded-tl-xl">Faculty Name</th>
                   <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Department</th>
-                  <th className="px-4 py-3">Identifier</th>
-                  <th className="px-4 py-3 rounded-tr-xl">Action</th>
+                  <th className="px-4 py-3">Departments</th>
+                  <th className="px-4 py-3">Employment</th>
+                  <th className="px-4 py-3 rounded-tr-xl">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
-                {currentList.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-4 py-3 font-medium flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center font-bold text-xs text-indigo-600 dark:text-indigo-400">
-                        {user.fullName.charAt(0)}
-                      </div>
-                      {user.fullName}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{user.email}</td>
+                {facultyDir.filter(f => f.fullName.toLowerCase().includes(searchTerm.toLowerCase())).map(fac => (
+                  <tr key={fac.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{fac.fullName}</td>
+                    <td className="px-4 py-3 text-slate-500">{fac.email}</td>
                     <td className="px-4 py-3">
-                      <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold">
-                        {user.department}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-500 dark:text-slate-400">
-                       {activeTab === 'STUDENT' ? `Roll: ${user.rollNo || 'N/A'}` : 'Faculty ID'}
+                       <div className="flex gap-1 flex-wrap">
+                         {fac.departments && fac.departments.length > 0 ? fac.departments.map(d => (
+                            <span key={d} className="bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-bold">{d}</span>
+                         )) : <span className="text-xs text-slate-400">N/A</span>}
+                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <button 
-                        onClick={() => handleApprove(user.id, activeTab === 'TEACHER')}
-                        className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
-                      >
-                        Approve Access
-                      </button>
+                       <span className={`px-2 py-1 rounded text-[10px] font-bold ${fac.employmentType === 'TEMPORARY' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+                         {fac.employmentType}
+                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                       {fac.isActive ? (
+                         <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs">● Active</span>
+                       ) : (
+                         <span className="text-red-600 dark:text-red-400 font-bold text-xs">● Expired/Suspended</span>
+                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'STUDENTS' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
+                <tr>
+                  <th className="px-4 py-3 rounded-tl-xl">Roll No</th>
+                  <th className="px-4 py-3">Student Name</th>
+                  <th className="px-4 py-3">Class & Div</th>
+                  <th className="px-4 py-3">Sem</th>
+                  <th className="px-4 py-3">Total ISA Marks</th>
+                  <th className="px-4 py-3 rounded-tr-xl">Total SEE Marks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
+                {studentDir.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.rollNo.includes(searchTerm)).map(stud => (
+                  <tr key={stud.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-500">{stud.rollNo}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{stud.name}</td>
+                    <td className="px-4 py-3">
+                       <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded text-[10px] font-bold">
+                         {stud.department} - {stud.className} ({stud.division})
+                       </span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-slate-500">{stud.currentSemester}</td>
+                    <td className="px-4 py-3 text-indigo-600 dark:text-indigo-400 font-bold">
+                       {stud.totalISA}
+                    </td>
+                    <td className="px-4 py-3 text-emerald-600 dark:text-emerald-400 font-bold">
+                       {stud.totalSEE}
                     </td>
                   </tr>
                 ))}
