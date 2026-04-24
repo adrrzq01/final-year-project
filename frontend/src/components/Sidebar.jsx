@@ -28,7 +28,7 @@ export default function Sidebar() {
       {/* Brand */}
       <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700/60">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 flex items-center justify-center shrink-0 drop-shadow-sm">
+          <div className="w-14 h-14 flex items-center justify-center shrink-0 drop-shadow-sm">
             <img src={logo} alt="Bridgify Logo" className="w-full h-full object-contain" />
           </div>
           <div>

@@ -6,6 +6,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
+    "fuzzball": "^2.2.3",
     "jsonwebtoken": "^9.0.2",
     "prisma": "^5.11.0"
   }

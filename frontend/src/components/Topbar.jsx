@@ -17,6 +17,12 @@ export default function Topbar() {
   const { dark, toggle } = useTheme()
 
   const [tString, setTString] = useState('')
+  
+  const userStr = localStorage.getItem('user')
+  const user = userStr ? JSON.parse(userStr) : {}
+  const displayName = user?.fullName || 'System Administrator'
+  const displayRole = user?.role ? user.role.charAt(0) + user.role.slice(1).toLowerCase() : 'Admin'
+  const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 
   useEffect(() => {
     const fn = () => {
@@ -89,11 +95,11 @@ export default function Topbar() {
         <div className="relative group">
           <button className="flex items-center gap-2.5 pl-3 pr-4 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow">
-              PA
+              {initials}
             </div>
             <div className="hidden md:block text-left">
-              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">Prof. Ahmed</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Faculty</p>
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">{displayName}</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{displayRole}</p>
             </div>
             <ChevronDown size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
           </button>

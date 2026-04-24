@@ -282,8 +282,8 @@ export default function Upload() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Student List', cols: 'rollNo, name', icon: '📋' },
-          { label: 'Marks CSV (Coming soon)', cols: 'rollNo, q1, q2', icon: '📊' },
-          { label: 'CO Mapping (Coming soon)', cols: 'qNumber, co, bloom', icon: '🗂️' },
+          { label: 'Marks CSV (Use Marks Entry Tab)', cols: 'rollNo, q1, q2...', icon: '📊' },
+          { label: 'CO Mapping (Use Exam Blueprints)', cols: 'qNumber, co, bloom', icon: '🗂️' },
         ].map((fmt) => (
           <div key={fmt.label} className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-4 shadow-sm transition-colors duration-300">
             <p className="text-base mb-1">{fmt.icon}</p>

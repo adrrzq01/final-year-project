@@ -3,6 +3,8 @@ import cors from 'cors'
 import { PrismaClient } from '@prisma/client'
 import { calculateAttainment } from './src/services/attainmentCalculator.js'
 
+import * as fuzz from 'fuzzball'
+
 // Import Auth Service
 import { registerUser, loginUser } from './src/routes/authRoutes.js'
 import { protect, requireAdmin, requireTeacherOrAdmin } from './src/middleware/authMiddleware.js'
@@ -172,7 +174,7 @@ app.post('/api/students/bulk-upload', protect, requireTeacherOrAdmin, async (req
     // Map the incoming data to match Prisma schema
     const formattedStudents = students.map(s => ({
       rollNo: s.rollNo,
-      name: s.name,
+      name: s.name || s.Name,
       academicClassId: academicClassId
     }))
 
@@ -619,6 +621,130 @@ app.post('/api/marks', protect, requireTeacherOrAdmin, async (req, res) => {
   } catch (error) {
     console.error('Mass insert error:', error)
     res.status(500).json({ error: 'Failed to save marks into database.' })
+  }
+})
+
+// 7a. Smart CSV Analyze / Validation Endpoint
+app.post('/api/marks/csv-analyze', protect, requireTeacherOrAdmin, async (req, res) => {
+  try {
+    const { courseId, examId, parsedRows } = req.body
+    if (!courseId || !examId || !parsedRows || !Array.isArray(parsedRows)) {
+      return res.status(400).json({ error: 'Missing Required Payload parameters.' })
+    }
+
+    // 1. Fetch valid enrolled students
+    const classRel = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: { academicClass: { include: { students: true } } }
+    })
+    const enrolledStudents = classRel?.academicClass?.students || []
+
+    if (enrolledStudents.length === 0) {
+      return res.status(404).json({ error: 'No students enrolled in this course.' })
+    }
+
+    // 2. Pre-process text corpus for Fuzzball choices
+    // Example: "21BCA01 ||| John Doe" (Using delim to extract ID easily later)
+    const choices = enrolledStudents.map(s => ({
+       text: `${s.rollNo} ||| ${s.name}`,
+       id: s.id,
+       rollNo: s.rollNo,
+       name: s.name
+    }))
+
+    // 3. Process every incoming CSV row into buckets
+    const analysis = parsedRows.map((row, index) => {
+      // Find keys that resemble Name and RollNo flexibly
+      const keys = Object.keys(row)
+      const rollKey = keys.find(k => k.toLowerCase().replace(/[\s_.-]/g, '') === 'rollno') || keys[0]
+      const nameKey = keys.find(k => k.toLowerCase().includes('name')) || keys[1]
+      
+      const inRoll = String(row[rollKey] || '').trim()
+      const inName = String(row[nameKey] || '').trim()
+      const searchTarget = `${inRoll} ||| ${inName}`
+
+      // Skip completely empty rows
+      if (!inRoll && !inName) return null
+
+      // Fuzzball exactness check
+      const exactMatch = choices.find(c => c.rollNo.toLowerCase() === inRoll.toLowerCase() && c.name.toLowerCase() === inName.toLowerCase())
+      
+      if (exactMatch) {
+         return {
+            originalRow: row,
+            status: 'Exact Match',
+            matchedStudentId: exactMatch.id,
+            matchedRoll: exactMatch.rollNo,
+            matchedName: exactMatch.name
+         }
+      }
+
+      // Fuzzy mapping
+      // extract() returns array of tuple: [choice object, score, index]
+      const fuzzyResults = fuzz.extract(searchTarget, choices, { processor: choice => choice.text, limit: 3 })
+      
+      // Strict thresholding
+      if (fuzzyResults.length > 0) {
+         const topScore = fuzzyResults[0][1]
+         if (topScore >= 60) {
+           return {
+              originalRow: row,
+              status: 'Fuzzy Match',
+              suggestions: fuzzyResults.map(r => ({
+                 score: r[1],
+                 id: r[0].id,
+                 rollNo: r[0].rollNo,
+                 name: r[0].name
+              }))
+           }
+         }
+      }
+
+      // Not found
+      return {
+         originalRow: row,
+         status: 'Not Found',
+         suggestions: []
+      }
+    }).filter(Boolean)
+
+    res.json({ analysis })
+  } catch(e) {
+    console.error('CSV Analyze error:', e)
+    res.status(500).json({ error: 'Failed to analyze CSV' })
+  }
+})
+
+// 7b. Smart CSV Commit Endpoint
+app.post('/api/marks/csv-commit', protect, requireTeacherOrAdmin, async (req, res) => {
+  try {
+    const { cleanMarks } = req.body
+    if (!cleanMarks || !Array.isArray(cleanMarks)) {
+       return res.status(400).json({ error: 'Valid resolved marks array required.' })
+    }
+
+    const upsertPromises = cleanMarks.map((entry) => 
+      prisma.mark.upsert({
+        where: {
+          studentId_questionId: {
+            studentId: entry.studentId,
+            questionId: entry.questionId
+          }
+        },
+        update: { obtainedMarks: Number(entry.obtainedMarks) },
+        create: {
+          studentId: entry.studentId,
+          questionId: entry.questionId,
+          obtainedMarks: Number(entry.obtainedMarks)
+        }
+      })
+    )
+
+    await prisma.$transaction(upsertPromises)
+    res.json({ message: 'Smart CSV marks safely committed!' })
+  } catch(e) {
+    console.error('CSV Commit error:', e)
+    res.status(500).json({ error: 'Failed to commit parsed marks' })
   }
 })
 
