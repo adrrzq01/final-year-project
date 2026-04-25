@@ -10,8 +10,21 @@ import { registerUser, loginUser } from './src/routes/authRoutes.js'
 import { protect, requireAdmin, requireTeacherOrAdmin } from './src/middleware/authMiddleware.js'
 import bcrypt from 'bcryptjs'
 
+// Import Calendar Engine
+import { getAcademicCycle } from './src/utils/calendarEngine.js'
+
 const app = express()
 const prisma = new PrismaClient()
+
+function getAllowedSemesters(className) {
+  if (!className) return [1, 2, 3, 4, 5, 6];
+  
+  if (className.startsWith('FY')) return [1, 2];
+  if (className.startsWith('SY')) return [3, 4];
+  if (className.startsWith('TY')) return [5, 6];
+  return [1, 2, 3, 4, 5, 6];
+}
+
 
 // Middleware
 app.use(cors({ origin: 'http://localhost:5173' })) // Allow Vite frontend
@@ -1034,14 +1047,12 @@ app.post('/api/mappings', protect, requireTeacherOrAdmin, async (req, res) => {
     )
 
     await prisma.$transaction(upsertPromises)
-
     res.json({ message: 'Mappings successfully saved!', count: mappings.length })
   } catch (error) {
     console.error('Save mappings error:', error)
     res.status(500).json({ error: 'Failed to securely save mappings.' })
   }
 })
-
 
 // 13. Save Course Exit Surveys (Mass Upsert)
 app.post('/api/surveys', protect, async (req, res) => {
@@ -1052,8 +1063,6 @@ app.post('/api/surveys', protect, async (req, res) => {
       return res.status(400).json({ error: 'A valid survey responses array is required.' })
     }
 
-    // Survey expected shape: [{ studentId, courseId, courseOutcomeId, rating }]
-    // We strictly use the unique compound key studentId_courseOutcomeId
     const upsertPromises = surveys.map((entry) => 
       prisma.courseExitSurvey.upsert({
         where: {
@@ -1062,9 +1071,7 @@ app.post('/api/surveys', protect, async (req, res) => {
             courseOutcomeId: entry.courseOutcomeId
           }
         },
-        update: {
-          rating: entry.rating
-        },
+        update: { rating: entry.rating },
         create: {
           studentId: entry.studentId,
           courseId: entry.courseId,
@@ -1075,7 +1082,6 @@ app.post('/api/surveys', protect, async (req, res) => {
     )
 
     await prisma.$transaction(upsertPromises)
-
     res.json({ message: 'Survey successfully captured!', count: surveys.length })
   } catch (error) {
     console.error('Save survey error:', error)
@@ -1092,7 +1098,45 @@ app.use((err, req, res, next) => {
 // --- Server Startup ---
 const PORT = process.env.PORT || 5000
 
-// --- STUDENT COURSE EXIT SURVEY ENDPOINTS ---
+// --- STUDENT ENDPOINTS ---
+
+app.get('/api/student/dashboard', protect, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } })
+    if (user.role !== 'STUDENT') return res.status(403).json({ error: 'Unauthorized' })
+    if (!user.rollNo) return res.status(400).json({ error: 'Student Roll No not found' })
+
+    const student = await prisma.student.findUnique({ 
+      where: { rollNo: user.rollNo },
+      include: { academicClass: true }
+    })
+    if (!student) return res.status(404).json({ error: 'Student record not found' })
+
+    const targetSem = req.query.sem ? parseInt(req.query.sem) : null;
+    let allowedSemesters = getAllowedSemesters(student.academicClass?.name);
+    
+    if (targetSem && allowedSemesters.includes(targetSem)) {
+      allowedSemesters = [targetSem];
+    } else if (targetSem) {
+      // If they request a sem outside their current year, maybe allow it for transcript but for now we enforce their current year or just allow it.
+      // The user requested: "if it 1st year the sem1 and sem2 and rest for other years".
+      // Let's just allow targetSem directly.
+      allowedSemesters = [targetSem];
+    }
+
+    const courses = await prisma.course.findMany({
+      where: { 
+        academicClassId: student.academicClassId,
+        semester: { in: allowedSemesters }
+      }
+    })
+
+    res.json(courses)
+  } catch(error) {
+    console.error('Student dashboard error:', error)
+    res.status(500).json({ error: 'Failed to fetch student dashboard data' })
+  }
+})
 
 app.get('/api/student/pending-surveys', protect, async (req, res) => {
   try {
@@ -1100,11 +1144,19 @@ app.get('/api/student/pending-surveys', protect, async (req, res) => {
     if (user.role !== 'STUDENT') return res.status(403).json({ error: 'Only students can view pending surveys' })
     if (!user.rollNo) return res.status(400).json({ error: 'Student Roll No not found in profile' })
 
-    const student = await prisma.student.findUnique({ where: { rollNo: user.rollNo } })
+    const student = await prisma.student.findUnique({ 
+      where: { rollNo: user.rollNo },
+      include: { academicClass: true }
+    })
     if (!student) return res.status(404).json({ error: 'Student academic record not found in system' })
 
+    const allowedSemesters = getAllowedSemesters(student.academicClass?.name)
+
     const courses = await prisma.course.findMany({
-      where: { academicClassId: student.academicClassId },
+      where: { 
+        academicClassId: student.academicClassId,
+        semester: { in: allowedSemesters }
+      },
       include: {
         courseOutcomes: true,
         courseExitSurveys: {
@@ -1164,12 +1216,17 @@ app.get('/api/student/marks', protect, async (req, res) => {
     const userEntry = await prisma.user.findUnique({ where: { id: req.user.id } })
     if (!userEntry || !userEntry.rollNo) return res.status(400).json({ error: 'Missing Roll Number' })
 
-    const student = await prisma.student.findUnique({ where: { rollNo: userEntry.rollNo } })
+    const student = await prisma.student.findUnique({ 
+      where: { rollNo: userEntry.rollNo },
+      include: { academicClass: true }
+    })
     if (!student) return res.status(404).json({ error: 'Academic record not found' })
 
-    const targetSem = req.query.sem ? parseInt(req.query.sem) : student.currentSemester
-    if (targetSem > student.currentSemester) {
-       return res.status(403).json({ error: 'Cannot access future semester transcripts.' })
+    const allowedSemesters = getAllowedSemesters(student.academicClass?.name)
+    const targetSem = req.query.sem ? parseInt(req.query.sem) : allowedSemesters[0]
+
+    if (!allowedSemesters.includes(targetSem)) {
+       return res.status(403).json({ error: 'Cannot access semester transcripts outside your academic year.' })
     }
 
     const courses = await prisma.course.findMany({

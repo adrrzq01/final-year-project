@@ -23,6 +23,16 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const { activeSemester } = useSemester()
 
+  const userStr = localStorage.getItem('user')
+  const user = userStr ? JSON.parse(userStr) : {}
+
+  const filteredMenuItems = menuItems.filter(item => {
+    if (user?.role === 'STUDENT') {
+      return ['/dashboard', '/survey'].includes(item.path) || item.label === 'My Attainment'
+    }
+    return true
+  })
+
   return (
     <aside className="w-64 shrink-0 h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700/60 flex flex-col shadow-sm z-10 transition-colors duration-300">
       {/* Brand */}
@@ -43,7 +53,7 @@ export default function Sidebar() {
         <p className="text-xs font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-widest px-3 mb-3">
           Navigation
         </p>
-        {menuItems.map((item) => {
+        {filteredMenuItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path)
             const Icon = item.icon
 

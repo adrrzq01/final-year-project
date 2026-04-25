@@ -17,16 +17,34 @@ export default function Survey() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState({ text: '', type: '' })
 
+  const userString = localStorage.getItem('user');
+  const user = userString ? JSON.parse(userString) : null;
+  const isStudent = user?.role === 'STUDENT';
+
   // Initial Data Load
   useEffect(() => {
     const fetchDropdowns = async () => {
       try {
-        const [studentRes, courseRes] = await Promise.all([
-          axios.get('http://localhost:5000/api/students'),
-          axios.get('http://localhost:5000/api/courses')
-        ])
-        setStudents(studentRes.data)
-        setCourses(courseRes.data)
+        const config = { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
+        
+        if (isStudent) {
+          const res = await axios.get('http://localhost:5000/api/student/pending-surveys', config);
+          const pendingCourses = res.data;
+          
+          if (pendingCourses.length > 0) {
+             setCourses(pendingCourses);
+             setSelectedStudentId(pendingCourses[0].studentId);
+          } else {
+             setCourses([]);
+          }
+        } else {
+          const [studentRes, courseRes] = await Promise.all([
+            axios.get('http://localhost:5000/api/students', config),
+            axios.get('http://localhost:5000/api/courses', config)
+          ])
+          setStudents(studentRes.data)
+          setCourses(courseRes.data)
+        }
       } catch (err) {
         console.error(err)
         setMessage({ text: 'Failed to initialize survey portal. Check server connection.', type: 'error' })
@@ -152,22 +170,34 @@ export default function Survey() {
          </h3>
          
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                 Your Profile (Roll No)
-               </label>
-               <select
-                  value={selectedStudentId}
-                  onChange={(e) => setSelectedStudentId(e.target.value)}
-                  disabled={loadingInitial}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
-               >
-                  <option value="">-- Select Student --</option>
-                  {students.map(s => (
-                     <option key={s.id} value={s.id}>{s.rollNo} - {s.name}</option>
-                  ))}
-               </select>
-            </div>
+            {!isStudent ? (
+              <div>
+                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                   Your Profile (Roll No)
+                 </label>
+                 <select
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    disabled={loadingInitial}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                 >
+                    <option value="">-- Select Student --</option>
+                    {students.map(s => (
+                       <option key={s.id} value={s.id}>{s.rollNo} - {s.name}</option>
+                    ))}
+                 </select>
+              </div>
+            ) : (
+              <div>
+                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                   Your Profile
+                 </label>
+                 <div className="w-full px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-xl text-indigo-700 dark:text-indigo-300 text-sm font-bold flex items-center">
+                   <CheckCircle2 size={18} className="mr-2" />
+                   {user?.name} ({user?.rollNo})
+                 </div>
+              </div>
+            )}
 
             <div>
                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
@@ -179,10 +209,16 @@ export default function Survey() {
                   disabled={loadingInitial}
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
                >
-                  <option value="">-- Select Course --</option>
-                  {courses.map(c => (
-                     <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
-                  ))}
+                  {courses.length === 0 && isStudent ? (
+                     <option value="">No pending surveys!</option>
+                  ) : (
+                     <>
+                       <option value="">-- Select Course --</option>
+                       {courses.map(c => (
+                          <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                       ))}
+                     </>
+                  )}
                </select>
             </div>
          </div>

@@ -20,20 +20,28 @@ export default function StudentDashboard() {
 
   const userString = localStorage.getItem("user");
   const user = userString ? JSON.parse(userString) : null;
+  const className = user?.className || '';
+  let availableSems = [1, 2, 3, 4, 5, 6];
+  if (className.startsWith('FY')) availableSems = [1, 2];
+  else if (className.startsWith('SY')) availableSems = [3, 4];
+  else if (className.startsWith('TY')) availableSems = [5, 6];
 
   useEffect(() => {
-    fetchData();
+    // default to the first available sem for their year, or just let backend decide if no param
+    fetchDashboardData(availableSems[0]);
   }, []);
 
-  const fetchData = async () => {
+  const fetchDashboardData = async (sem) => {
     try {
       setLoading(true);
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
       
+      const querySem = sem ? `?sem=${sem}` : "";
+
       const [coursesRes, surveysRes, marksRes] = await Promise.all([
-        axios.get("http://localhost:5000/api/courses", config), // Baseline academics
+        axios.get(`http://localhost:5000/api/student/dashboard${querySem}`, config),
         axios.get("http://localhost:5000/api/student/pending-surveys", config),
-        axios.get("http://localhost:5000/api/student/marks", config)
+        axios.get(`http://localhost:5000/api/student/marks${querySem}`, config)
       ]);
 
       setCourses(coursesRes.data);
@@ -41,24 +49,12 @@ export default function StudentDashboard() {
       
       setMyMarks(marksRes.data.courses || []);
       setCurrentSem(marksRes.data.currentSemester || 1);
-      setTargetSem(marksRes.data.targetSemester || 1);
+      setTargetSem(sem || marksRes.data.targetSemester || 1);
     } catch (err) {
       console.error(err);
       setError("Failed to load your academic profile.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchSemesterMarks = async (sem) => {
-    try {
-      const config = { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
-      const res = await axios.get(`http://localhost:5000/api/student/marks?sem=${sem}`, config);
-      setMyMarks(res.data.courses || []);
-      setTargetSem(res.data.targetSemester || parseInt(sem, 10));
-    } catch(err) {
-      console.error(err);
-      showAlert("Failed to load semester marks.", "error");
     }
   };
 
@@ -105,7 +101,7 @@ export default function StudentDashboard() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-10">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Presentation size={22} className="text-indigo-600 dark:text-indigo-400" />
@@ -114,6 +110,19 @@ export default function StudentDashboard() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Tracking {user?.department || "BCA"} • Roll {user?.rollNo || "N/A"} • Div {user?.division || "A"}
           </p>
+        </div>
+        
+        <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-2 px-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+          <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">View Semester:</span>
+          <select 
+            value={targetSem}
+            onChange={(e) => fetchDashboardData(parseInt(e.target.value))}
+            className="bg-transparent border-none text-sm font-bold text-indigo-600 dark:text-indigo-400 focus:ring-0 cursor-pointer outline-none"
+          >
+            {availableSems.map(sem => (
+              <option key={sem} value={sem} className="text-slate-800 dark:text-slate-200">Semester {sem}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -193,19 +202,6 @@ export default function StudentDashboard() {
                   <BookOpen size={20} className="text-indigo-500" />
                   My Official Marks Transcript
                </h3>
-               
-               <div className="flex items-center gap-3">
-                 <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 hidden sm:block">View Semester:</span>
-                 <select 
-                   value={targetSem}
-                   onChange={(e) => fetchSemesterMarks(e.target.value)}
-                   className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-3 py-2 rounded-lg focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
-                 >
-                   {Array.from({length: currentSem}, (_, i) => i + 1).map(sem => (
-                     <option key={sem} value={sem}>Semester {sem}</option>
-                   ))}
-                 </select>
-               </div>
              </div>
              
              {myMarks.length === 0 ? (
