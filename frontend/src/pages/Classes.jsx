@@ -8,6 +8,12 @@ import axios from 'axios'
 import AddCourseModal from '../components/AddCourseModal'
 import { useAlert } from '../context/AlertContext'
 
+const getCycle = () => {
+  const month = new Date().getMonth() + 1; // 1-12
+  if (month >= 6 && month <= 11) return 'ODD';
+  return 'EVEN';
+};
+
 export default function Classes() {
   const [error, setError] = useState('')
   
@@ -56,8 +62,15 @@ export default function Classes() {
       const config = { headers: { Authorization: `Bearer ${currentToken}` } }
 
       const res = await axios.get(`http://localhost:5000/api/courses?${queryParams.toString()}`, config)
-      setCourses(res.data)
-      setFilteredCourses(res.data) // Initialize filteredCourses with all courses
+      
+      let fetchedCourses = res.data;
+      if (selectedDepartment === 'BCA' && !selectedSemester) {
+         const activeSems = getCycle() === 'ODD' ? [1, 3, 5] : [2, 4, 6];
+         fetchedCourses = fetchedCourses.filter(c => activeSems.includes(c.semester));
+      }
+      
+      setCourses(fetchedCourses)
+      setFilteredCourses(fetchedCourses) // Initialize filteredCourses with all active courses
     } catch (err) {
       console.error('Failed to load courses', err)
       setError('Failed to connect to the server or retrieve courses.')
@@ -221,13 +234,20 @@ export default function Classes() {
               onChange={e => setSelectedSemester(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
             >
-              <option value="">All Semesters</option>
-              <option value="1">Semester 1</option>
-              <option value="2">Semester 2</option>
-              <option value="3">Semester 3</option>
-              <option value="4">Semester 4</option>
-              <option value="5">Semester 5</option>
-              <option value="6">Semester 6</option>
+              <option value="">All Active Semesters</option>
+              {getCycle() === 'ODD' ? (
+                <>
+                  <option value="1">Semester 1</option>
+                  <option value="3">Semester 3</option>
+                  <option value="5">Semester 5</option>
+                </>
+              ) : (
+                <>
+                  <option value="2">Semester 2</option>
+                  <option value="4">Semester 4</option>
+                  <option value="6">Semester 6</option>
+                </>
+              )}
             </select>
           </div>
         )}

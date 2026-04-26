@@ -14,7 +14,8 @@ export default function Reports() {
     const fetchCourses = async () => {
       try {
         const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-        const res = await axios.get('http://localhost:5000/api/courses', config)
+        // Load lean list (no courseOutcomes) for the dropdown — much faster
+        const res = await axios.get('http://localhost:5000/api/courses?lean=true', config)
         setCourses(res.data)
       } catch (err) {
         console.error('Failed to load courses', err)

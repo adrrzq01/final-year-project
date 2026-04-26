@@ -261,6 +261,8 @@ export default function MarksEntry() {
   const [loadingGrid, setLoadingGrid] = useState(false)
   const [savedSessions, setSavedSessions] = useState([])
   const [showGrid, setShowGrid] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 20
 
   // 1. Fetch Courses on Mount
   useEffect(() => {
@@ -295,6 +297,7 @@ export default function MarksEntry() {
         
         setStudents(data.students || [])
         setExams(data.exams || [])
+        setCurrentPage(1) // Reset to page 1 on course change
         
         let existingMarksMap = {}
         if (data.exams) {
@@ -586,7 +589,7 @@ export default function MarksEntry() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {students.map((student, sIdx) => {
+                    {students.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((student, sIdx) => {
                       const rowTotal = subQuestions.reduce((sum, sq) => {
                         return sum + Number(marksData[`${student.id}_${sq.id}`] || 0)
                       }, 0)
@@ -622,6 +625,33 @@ export default function MarksEntry() {
                   </tbody>
                 </table>
               </div>
+              {/* Pagination Controls */}
+              {students.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Showing {Math.min((currentPage - 1) * PAGE_SIZE + 1, students.length)}–{Math.min(currentPage * PAGE_SIZE, students.length)} of {students.length} students
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                      Page {currentPage} / {Math.ceil(students.length / PAGE_SIZE)}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(students.length / PAGE_SIZE), p + 1))}
+                      disabled={currentPage >= Math.ceil(students.length / PAGE_SIZE)}
+                      className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>

@@ -83,3 +83,14 @@ a, button { transition: all 0.2s ease; }
 .dark .drop-zone-active {
   background-color: #1e1b4b !important;
 }
+
+/* Fix for native select dropdown options readability */
+select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dark select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}

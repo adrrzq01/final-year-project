@@ -7,6 +7,7 @@ export default function StudentDashboard() {
   const [courses, setCourses] = useState([]);
   const [pendingSurveys, setPendingSurveys] = useState([]);
   const [myMarks, setMyMarks] = useState([]);
+  const [courseAttainmentMap, setCourseAttainmentMap] = useState({});
   const [currentSem, setCurrentSem] = useState(1);
   const [targetSem, setTargetSem] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -47,9 +48,20 @@ export default function StudentDashboard() {
       setCourses(coursesRes.data);
       setPendingSurveys(surveysRes.data);
       
-      setMyMarks(marksRes.data.courses || []);
+      const marksPayload = marksRes.data.courses || [];
+      setMyMarks(marksPayload);
       setCurrentSem(marksRes.data.currentSemester || 1);
       setTargetSem(sem || marksRes.data.targetSemester || 1);
+
+      // Build CO attainment map: courseId -> pct (keyed by course.id from marksList)
+      const attMap = {};
+      marksPayload.forEach(course => {
+        const total = course.marksList?.length || 0;
+        if (total === 0) { attMap[course.id] = null; return; }
+        const passed = course.marksList.filter(m => m.pass === true).length;
+        attMap[course.id] = Math.round((passed / total) * 100);
+      });
+      setCourseAttainmentMap(attMap);
     } catch (err) {
       console.error(err);
       setError("Failed to load your academic profile.");
@@ -184,10 +196,23 @@ export default function StudentDashboard() {
                       <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
                         <TrendingUp size={12} /> Personal CO Attainment
                       </span>
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Evaluating...</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        {courseAttainmentMap[course.id] !== undefined && courseAttainmentMap[course.id] !== null
+                          ? `${courseAttainmentMap[course.id]}%`
+                          : 'No Data'}
+                      </span>
                     </div>
                     <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                      <div className="h-full bg-indigo-500 w-0 rounded-full transition-all duration-1000" />
+                      <div
+                        className={`h-full rounded-full transition-all duration-1000 ${
+                          (courseAttainmentMap[course.id] || 0) >= 60
+                            ? 'bg-emerald-500'
+                            : (courseAttainmentMap[course.id] || 0) >= 40
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${courseAttainmentMap[course.id] || 0}%` }}
+                      />
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, ChevronDown, FileText } from 'lucide-react'
 import axios from 'axios'
 import { useAlert } from '../context/AlertContext'
@@ -24,8 +24,6 @@ const allExams = [
   { name: 'SEE(P)', label: 'SEE (Practical)', target: 85, isPractical: true }
 ]
 
-const hindiVowels = ['अ', 'आ', 'इ', 'ई', 'उ', 'ऊ', 'ऋ', 'ए', 'ऐ', 'ओ', 'औ']
-const hindiConsonants = ['क', 'ख', 'ग', 'घ', 'ङ', 'च', 'छ', 'ज', 'झ', 'ञ', 'ट', 'ठ', 'ड', 'ढ', 'ण', 'त', 'थ', 'द', 'ध', 'न', 'प', 'फ', 'ब', 'भ', 'म', 'य', 'र', 'ल', 'व', 'श', 'ष', 'स', 'ह']
 
 export default function Exams() {
   const [courses, setCourses] = useState([])
@@ -58,7 +56,8 @@ export default function Exams() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/courses')
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      const res = await axios.get('http://localhost:5000/api/courses', config)
       setCourses(res.data)
       if (res.data.length > 0) setCourseSelected(res.data[0].id)
     } catch (err) {

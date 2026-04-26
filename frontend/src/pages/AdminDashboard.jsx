@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { ShieldCheck, UserCheck, AlertCircle, Loader2, GraduationCap, Users, BookOpen, TrendingUp, Award } from 'lucide-react'
+import { ShieldCheck, UserCheck, AlertCircle, Loader2, GraduationCap, Users, BookOpen, TrendingUp, Award, RefreshCcw } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import AttainmentChart from '../components/AttainmentChart'
 import { useAlert } from '../context/AlertContext'
 
 export default function AdminDashboard() {
+  const navigate = useNavigate()
   const [users, setUsers] = useState([])
   const [facultyDir, setFacultyDir] = useState([])
   const [studentDir, setStudentDir] = useState([])
@@ -23,6 +25,12 @@ export default function AdminDashboard() {
   const [globalParity, setGlobalParity] = useState('ODD')
   const [parityLoading, setParityLoading] = useState(true)
 
+  // Directory Filters
+  const [facultyDeptFilter, setFacultyDeptFilter] = useState('')
+  const [studentDeptFilter, setStudentDeptFilter] = useState('')
+  const [studentClassFilter, setStudentClassFilter] = useState('')
+  const [studentDivFilter, setStudentDivFilter] = useState('')
+
   useEffect(() => {
     fetchPendingUsers()
     fetchDirectories()
@@ -35,8 +43,8 @@ export default function AdminDashboard() {
       setDirLoading(true)
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       const [facRes, studRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/admin/faculty', config),
-        axios.get('http://localhost:5000/api/admin/directory/students', config)
+        axios.get('http://localhost:5000/api/admin/users/faculty', config),
+        axios.get('http://localhost:5000/api/admin/users/students', config)
       ])
       setFacultyDir(facRes.data)
       setStudentDir(studRes.data)
@@ -121,6 +129,15 @@ export default function AdminDashboard() {
             Admin Master Control
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">System analytics, access management, and unified registrations.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => { fetchPendingUsers(); fetchDirectories(); fetchAnalytics(); fetchSettings(); }}
+            className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-sm"
+          >
+            <RefreshCcw size={16} className={analyticsLoading ? 'animate-spin' : ''} />
+            Refresh Data
+          </button>
         </div>
       </div>
 
@@ -226,13 +243,79 @@ export default function AdminDashboard() {
            </div>
            
            {(activeTab === 'FACULTY' || activeTab === 'STUDENTS') && (
-             <input
-               type="text"
-               placeholder={`Search ${activeTab.toLowerCase()}...`}
-               value={searchTerm}
-               onChange={(e) => setSearchTerm(e.target.value)}
-               className="w-full sm:w-64 px-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
-             />
+             <div className="flex items-center gap-3 w-full sm:w-auto mt-3 sm:mt-0">
+               {activeTab === 'FACULTY' && (
+                   <select
+                     value={facultyDeptFilter}
+                     onChange={(e) => setFacultyDeptFilter(e.target.value)}
+                     className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+                   >
+                     <option value="">All Departments</option>
+                     <option value="Unassigned">Unassigned</option>
+                     <option value="BCA">BCA</option>
+                     <option value="BBA">BBA</option>
+                     <option value="BCOM">BCOM</option>
+                     <option value="BA">BA</option>
+                   </select>
+               )}
+
+               {activeTab === 'STUDENTS' && (
+                 <>
+                   <select
+                     value={studentDeptFilter}
+                     onChange={(e) => {
+                       setStudentDeptFilter(e.target.value)
+                       setStudentClassFilter('')
+                       setStudentDivFilter('')
+                     }}
+                     className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+                   >
+                     <option value="">All Departments</option>
+                     <option value="BCA">BCA</option>
+                     <option value="BBA">BBA</option>
+                     <option value="BCOM">BCOM</option>
+                     <option value="BA">BA</option>
+                   </select>
+
+                   {studentDeptFilter && (
+                     <select
+                       value={studentClassFilter}
+                       onChange={(e) => {
+                         setStudentClassFilter(e.target.value)
+                         setStudentDivFilter('')
+                       }}
+                       className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+                     >
+                       <option value="">All Classes</option>
+                       <option value={`FY${studentDeptFilter}`}>FY{studentDeptFilter}</option>
+                       <option value={`SY${studentDeptFilter}`}>SY{studentDeptFilter}</option>
+                       <option value={`TY${studentDeptFilter}`}>TY{studentDeptFilter}</option>
+                     </select>
+                   )}
+
+                   {studentDeptFilter && studentClassFilter && (
+                     <select
+                       value={studentDivFilter}
+                       onChange={(e) => setStudentDivFilter(e.target.value)}
+                       className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+                     >
+                       <option value="">All Divs</option>
+                       <option value="A">Div A</option>
+                       <option value="B">Div B</option>
+                       <option value="C">Div C</option>
+                     </select>
+                   )}
+                 </>
+               )}
+
+               <input
+                 type="text"
+                 placeholder={`Search ${activeTab.toLowerCase()}...`}
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+                 className="w-full sm:w-48 px-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:text-white"
+               />
+             </div>
            )}
         </div>
 
@@ -293,82 +376,132 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'FACULTY' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
-                <tr>
-                  <th className="px-4 py-3 rounded-tl-xl">Faculty Name</th>
-                  <th className="px-4 py-3">Email</th>
-                  <th className="px-4 py-3">Departments</th>
-                  <th className="px-4 py-3">Employment</th>
-                  <th className="px-4 py-3 rounded-tr-xl">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
-                {facultyDir.filter(f => f.fullName.toLowerCase().includes(searchTerm.toLowerCase())).map(fac => (
-                  <tr key={fac.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{fac.fullName}</td>
-                    <td className="px-4 py-3 text-slate-500">{fac.email}</td>
-                    <td className="px-4 py-3">
-                       <div className="flex gap-1 flex-wrap">
-                         {fac.departments && fac.departments.length > 0 ? fac.departments.map(d => (
-                            <span key={d} className="bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-bold">{d}</span>
-                         )) : <span className="text-xs text-slate-400">N/A</span>}
-                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                       <span className={`px-2 py-1 rounded text-[10px] font-bold ${fac.employmentType === 'TEMPORARY' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
-                         {fac.employmentType}
-                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                       {fac.isActive ? (
-                         <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs">● Active</span>
-                       ) : (
-                         <span className="text-red-600 dark:text-red-400 font-bold text-xs">● Expired/Suspended</span>
-                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-6">
+            {Object.keys(facultyDir)
+              .filter(dept => !facultyDeptFilter || dept === facultyDeptFilter)
+              .map(dept => {
+              const deptFaculty = facultyDir[dept].filter(f => f.fullName.toLowerCase().includes(searchTerm.toLowerCase()));
+              if (deptFaculty.length === 0) return null;
+              
+              return (
+                <div key={dept} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+                  <div className="bg-slate-100 dark:bg-slate-900/60 px-5 py-3 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">Department: {dept}</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
+                        <tr>
+                          <th className="px-4 py-3">Faculty Name</th>
+                          <th className="px-4 py-3">Email</th>
+                          <th className="px-4 py-3">Departments</th>
+                          <th className="px-4 py-3">Employment</th>
+                          <th className="px-4 py-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
+                        {deptFaculty.map(fac => (
+                          <tr key={fac.id} onClick={() => navigate(`/admin/user/${fac.id}`)} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer group">
+                            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{fac.fullName}</td>
+                            <td className="px-4 py-3 text-slate-500">{fac.email}</td>
+                            <td className="px-4 py-3">
+                               <div className="flex gap-1 flex-wrap">
+                                 {fac.departments && fac.departments.length > 0 ? fac.departments.map(d => (
+                                    <span key={d} className="bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-bold">{d}</span>
+                                 )) : <span className="text-xs text-slate-400">N/A</span>}
+                               </div>
+                            </td>
+                            <td className="px-4 py-3">
+                               <span className={`px-2 py-1 rounded text-[10px] font-bold ${fac.employmentType === 'TEMPORARY' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+                                 {fac.employmentType}
+                               </span>
+                            </td>
+                            <td className="px-4 py-3">
+                               {fac.isActive ? (
+                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs">● Active</span>
+                               ) : (
+                                 <span className="text-red-600 dark:text-red-400 font-bold text-xs">● Expired/Suspended</span>
+                               )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
         {activeTab === 'STUDENTS' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
-                <tr>
-                  <th className="px-4 py-3 rounded-tl-xl">Roll No</th>
-                  <th className="px-4 py-3">Student Name</th>
-                  <th className="px-4 py-3">Class & Div</th>
-                  <th className="px-4 py-3">Sem</th>
-                  <th className="px-4 py-3">Total ISA Marks</th>
-                  <th className="px-4 py-3 rounded-tr-xl">Total SEE Marks</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
-                {studentDir.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.rollNo.includes(searchTerm)).map(stud => (
-                  <tr key={stud.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-slate-500">{stud.rollNo}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{stud.name}</td>
-                    <td className="px-4 py-3">
-                       <span className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 px-2 py-1 rounded text-[10px] font-bold">
-                         {stud.department} - {stud.className} ({stud.division})
-                       </span>
-                    </td>
-                    <td className="px-4 py-3 font-bold text-slate-500">{stud.currentSemester}</td>
-                    <td className="px-4 py-3 text-indigo-600 dark:text-indigo-400 font-bold">
-                       {stud.totalISA}
-                    </td>
-                    <td className="px-4 py-3 text-emerald-600 dark:text-emerald-400 font-bold">
-                       {stud.totalSEE}
-                    </td>
-                  </tr>
+          <div className="space-y-6">
+            {Object.keys(studentDir)
+              .filter(dept => !studentDeptFilter || dept === studentDeptFilter)
+              .map(dept => (
+              <div key={dept} className="space-y-4">
+                {Object.keys(studentDir[dept])
+                  .filter(cls => !studentClassFilter || cls === studentClassFilter)
+                  .map(cls => (
+                  <div key={cls} className="space-y-4">
+                    {Object.keys(studentDir[dept][cls])
+                      .filter(div => !studentDivFilter || div === studentDivFilter)
+                      .map(div => {
+                      const divStudents = studentDir[dept][cls][div].filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.rollNo.includes(searchTerm));
+                      if (divStudents.length === 0) return null;
+
+                      return (
+                        <div key={`${dept}-${cls}-${div}`} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+                          <div className="bg-slate-100 dark:bg-slate-900/60 px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{dept} - {cls} (Div {div})</h3>
+                            <span className="text-xs font-semibold text-slate-500 bg-white dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">{divStudents.length} Students</span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm whitespace-nowrap">
+                              <thead className="bg-slate-50 dark:bg-slate-900/30 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700/60">
+                                <tr>
+                                  <th className="px-4 py-3">Roll No</th>
+                                  <th className="px-4 py-3">Student Name</th>
+                                  <th className="px-4 py-3">Current Sem</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-slate-700 dark:text-slate-300">
+                                {divStudents.map(stud => (
+                                  <tr key={stud.id} onClick={() => navigate(`/admin/user/${stud.id}`)} className="hover:bg-indigo-50/50 dark:hover:bg-slate-800/80 transition-colors cursor-pointer group">
+                                    <td className="px-4 py-3 font-medium text-slate-500 group-hover:text-indigo-500">{stud.rollNo}</td>
+                                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{stud.name}</td>
+                                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                      <select
+                                        value={stud.currentSemester}
+                                        onChange={async (e) => {
+                                          const newSem = parseInt(e.target.value);
+                                          try {
+                                            const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } };
+                                            await axios.put(`http://localhost:5000/api/admin/users/${stud.id}`, { currentSemester: newSem }, config);
+                                            // Soft update UI by forcing a re-fetch since deep nested state is hard to update manually
+                                            fetchDirectories();
+                                            showAlert(`Semester updated to ${newSem} for ${stud.name}`, 'success');
+                                          } catch (err) {
+                                            showAlert('Failed to update semester', 'error');
+                                          }
+                                        }}
+                                        className="text-xs font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                                      >
+                                        {[1,2,3,4,5,6].map(s => <option key={s} value={s}>Sem {s}</option>)}
+                                      </select>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            ))}
           </div>
         )}
       </div>

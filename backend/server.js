@@ -6,7 +6,7 @@ import { calculateAttainment } from './src/services/attainmentCalculator.js'
 import * as fuzz from 'fuzzball'
 
 // Import Auth Service
-import { registerUser, loginUser } from './src/routes/authRoutes.js'
+import { registerUser, loginUser, changePassword } from './src/routes/authRoutes.js'
 import { protect, requireAdmin, requireTeacherOrAdmin } from './src/middleware/authMiddleware.js'
 import bcrypt from 'bcryptjs'
 
@@ -35,6 +35,7 @@ app.use(express.json())
 // 0. Authentication
 app.post('/api/auth/register', registerUser)
 app.post('/api/auth/login', loginUser)
+app.put('/api/auth/change-password', protect, changePassword)
 
 // 1. Health check
 app.get('/api/health', (req, res) => {
@@ -100,9 +101,9 @@ app.get('/api/admin/directory/students', protect, requireAdmin, async (req, res)
         if (!mark.question || !mark.question.exam) continue;
         const examName = mark.question.exam.name.toUpperCase();
         if (examName.includes('ISA')) {
-          totalISA += Number(mark.obtainedMark || 0);
-        } else if (examName.includes('SEE')) {
-          totalSEE += Number(mark.obtainedMark || 0);
+          totalISA += Number(mark.obtainedMarks || 0);
+        } else if (examName.includes('SEE') || examName.includes('ESE')) {
+          totalSEE += Number(mark.obtainedMarks || 0);
         }
       }
 
@@ -124,6 +125,24 @@ app.get('/api/admin/directory/students', protect, requireAdmin, async (req, res)
   } catch (err) {
     console.error('Student Directory fetch error:', err);
     res.status(500).json({ error: 'Failed to fetch student directory payload.' });
+  }
+});
+
+// Admin: Update a student's current semester
+app.put('/api/admin/students/:id/semester', protect, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentSemester } = req.body;
+    if (!currentSemester || currentSemester < 1 || currentSemester > 6) {
+      return res.status(400).json({ error: 'Invalid semester. Must be between 1 and 6.' });
+    }
+    const updated = await prisma.student.update({
+      where: { id },
+      data: { currentSemester: parseInt(currentSemester) }
+    });
+    res.json({ message: `Student semester updated to ${currentSemester}`, student: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update student semester.' });
   }
 });
 
@@ -155,6 +174,229 @@ app.put('/api/admin/settings', protect, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Settings update error:', err)
     res.status(500).json({ error: err.message || 'Failed to update settings.' });
+  }
+});
+
+// Phase 31: Advanced Admin API
+
+// GET /api/admin/users/students
+app.get('/api/admin/users/students', protect, requireAdmin, async (req, res) => {
+  try {
+    const students = await prisma.student.findMany({
+      include: { academicClass: true },
+      orderBy: { rollNo: 'asc' }
+    });
+
+    // Grouping by department -> className -> division
+    const grouped = students.reduce((acc, student) => {
+      // Use fallback defaults if fields are missing in legacy data
+      const dept = student.department || 'BCA';
+      const cls = student.academicClass?.name || student.className || 'Unknown Class';
+      const div = student.division || 'A';
+
+      if (!acc[dept]) acc[dept] = {};
+      if (!acc[dept][cls]) acc[dept][cls] = {};
+      if (!acc[dept][cls][div]) acc[dept][cls][div] = [];
+
+      acc[dept][cls][div].push({
+        id: student.id,
+        rollNo: student.rollNo,
+        name: student.name,
+        currentSemester: student.currentSemester
+      });
+      return acc;
+    }, {});
+
+    res.json(grouped);
+  } catch (error) {
+    console.error('Fetch grouped students error:', error);
+    res.status(500).json({ error: 'Failed to fetch grouped students' });
+  }
+});
+
+// GET /api/admin/users/faculty
+app.get('/api/admin/users/faculty', protect, requireAdmin, async (req, res) => {
+  try {
+    const faculty = await prisma.user.findMany({
+      where: { role: 'TEACHER' },
+      select: { id: true, fullName: true, email: true, departments: true, employmentType: true, isActive: true }
+    });
+
+    // Group by department
+    const grouped = faculty.reduce((acc, teacher) => {
+      const depts = teacher.departments && teacher.departments.length > 0 ? teacher.departments : ['Unassigned'];
+      depts.forEach(d => {
+        if (!acc[d]) acc[d] = [];
+        acc[d].push(teacher);
+      });
+      return acc;
+    }, {});
+
+    res.json(grouped);
+  } catch (error) {
+    console.error('Fetch grouped faculty error:', error);
+    res.status(500).json({ error: 'Failed to fetch grouped faculty' });
+  }
+});
+
+// GET /api/admin/users/:id/academic-progress
+app.get('/api/admin/users/:id/academic-progress', protect, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if ID belongs to a User (Teacher) or Student
+    let user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      // Might be a student UUID
+      const student = await prisma.student.findUnique({
+        where: { id },
+        include: {
+          marks: {
+            include: {
+              question: {
+                include: {
+                  exam: {
+                    include: { course: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!student) return res.status(404).json({ error: 'User/Student not found' });
+
+      // Build hierarchical progress for Student
+      const progress = {};
+      student.marks.forEach(mark => {
+        if (!mark.question || !mark.question.exam || !mark.question.exam.course) return;
+        const exam = mark.question.exam;
+        const course = exam.course;
+        const semester = course.semester;
+        
+        let academicYear = 'First Year';
+        if (semester > 4) academicYear = 'Third Year';
+        else if (semester > 2) academicYear = 'Second Year';
+
+        if (!progress[academicYear]) progress[academicYear] = {};
+        if (!progress[academicYear][`Semester ${semester}`]) progress[academicYear][`Semester ${semester}`] = {};
+        if (!progress[academicYear][`Semester ${semester}`][course.id]) {
+           progress[academicYear][`Semester ${semester}`][course.id] = {
+             code: course.code,
+             name: course.name,
+             exams: {}
+           };
+        }
+
+        const examType = exam.name.toUpperCase().includes('SEE') ? 'SEE' : 'ISA';
+        if (!progress[academicYear][`Semester ${semester}`][course.id].exams[examType]) {
+          progress[academicYear][`Semester ${semester}`][course.id].exams[examType] = { obtained: 0, max: exam.totalMarks };
+        }
+        
+        progress[academicYear][`Semester ${semester}`][course.id].exams[examType].obtained += Number(mark.obtainedMarks || 0);
+      });
+
+      return res.json({ type: 'STUDENT', progress });
+    }
+
+    // It's a Teacher
+    if (user.role === 'TEACHER') {
+      let courseConditions = {};
+      if (user.employmentType === 'PERMANENT') {
+        courseConditions = { department: { in: user.departments } };
+      } else {
+        const courseIds = user.assignedCourseIds ? user.assignedCourseIds.split(',') : [];
+        courseConditions = { id: { in: courseIds } };
+      }
+
+      const courses = await prisma.course.findMany({
+        where: courseConditions,
+        include: {
+          exams: { include: { questions: { include: { marks: true } } } },
+          courseOutcomes: true
+        }
+      });
+
+      const progress = {};
+      courses.forEach(course => {
+        let academicYear = 'First Year';
+        if (course.semester > 4) academicYear = 'Third Year';
+        else if (course.semester > 2) academicYear = 'Second Year';
+
+        if (!progress[academicYear]) progress[academicYear] = {};
+        if (!progress[academicYear][`Semester ${course.semester}`]) progress[academicYear][`Semester ${course.semester}`] = [];
+
+        // Basic calculation for teacher overview
+        let totalMarksAvailable = 0;
+        let totalMarksObtained = 0;
+        course.exams.forEach(ex => {
+           ex.questions.forEach(q => {
+             q.marks.forEach(m => {
+               totalMarksObtained += Number(m.obtainedMarks || 0);
+               totalMarksAvailable += Number(q.maxMarks || 0);
+             });
+           });
+        });
+
+        const overallAttainment = totalMarksAvailable > 0 ? ((totalMarksObtained / totalMarksAvailable) * 100).toFixed(1) : 0;
+
+        progress[academicYear][`Semester ${course.semester}`].push({
+          id: course.id,
+          code: course.code,
+          name: course.name,
+          overallAttainment: `${overallAttainment}%`
+        });
+      });
+
+      return res.json({ type: 'TEACHER', progress });
+    }
+
+    res.status(400).json({ error: 'Unsupported user role' });
+  } catch (err) {
+    console.error('Academic progress error:', err);
+    res.status(500).json({ error: 'Failed to fetch academic progress' });
+  }
+});
+
+// PUT /api/admin/users/:id
+app.put('/api/admin/users/:id', protect, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    
+    // Check if updating User or Student
+    let user = await prisma.user.findUnique({ where: { id } });
+    if (user) {
+       const updatedUser = await prisma.user.update({
+         where: { id },
+         data: {
+           fullName: data.fullName,
+           department: data.department,
+           isActive: data.isActive,
+           employmentType: data.employmentType
+         }
+       });
+       return res.json({ message: 'User updated', data: updatedUser });
+    }
+
+    let student = await prisma.student.findUnique({ where: { id } });
+    if (student) {
+       const updatedStudent = await prisma.student.update({
+         where: { id },
+         data: {
+           name: data.name,
+           rollNo: data.rollNo,
+           currentSemester: data.currentSemester ? parseInt(data.currentSemester) : undefined
+         }
+       });
+       return res.json({ message: 'Student updated', data: updatedStudent });
+    }
+
+    res.status(404).json({ error: 'Record not found' });
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'Failed to update user' });
   }
 });
 
@@ -209,7 +451,7 @@ app.post('/api/students/bulk-upload', protect, requireTeacherOrAdmin, async (req
 })
 
 // 2.a Get Students (Filtered by classId if provided)
-app.get('/api/students', async (req, res) => {
+app.get('/api/students', protect, async (req, res) => {
   try {
     const { classId } = req.query
     const whereClause = classId ? { academicClassId: classId } : {}
@@ -226,7 +468,7 @@ app.get('/api/students', async (req, res) => {
 })
 
 // 2b. Get Academic Classes for Dropdown
-app.get('/api/academic-classes', async (req, res) => {
+app.get('/api/academic-classes', protect, async (req, res) => {
   try {
     const classes = await prisma.academicClass.findMany({
       orderBy: { createdAt: 'desc' }
@@ -253,12 +495,11 @@ app.delete('/api/academic-classes/:id', protect, requireAdmin, async (req, res) 
 // 3. Get all Courses (with optional Department & Semester filters)
 // NOTE: No parity filtering here — Admins/Teachers must see ALL courses for management.
 // Parity filtering only applies to student-facing dashboard endpoints.
-app.get('/api/courses', async (req, res) => {
+app.get('/api/courses', protect, async (req, res) => {
   try {
-    const { department, semester } = req.query
+    const { department, semester, lean } = req.query
 
     const whereClause = {}
-
     if (department) whereClause.department = department
     if (semester) whereClause.semester = parseInt(semester)
 
@@ -266,7 +507,8 @@ app.get('/api/courses', async (req, res) => {
       where: whereClause,
       include: {
         academicClass: true,
-        courseOutcomes: true,
+        // Skip courseOutcomes on lean requests (e.g. dropdown lists) — 10x faster
+        courseOutcomes: lean === 'true' ? false : true,
       },
       orderBy: [{ semester: 'asc' }, { code: 'asc' }]
     })
@@ -393,7 +635,7 @@ app.delete('/api/courses/clear-all', protect, requireAdmin, async (req, res) => 
 // Removed Developmental Seed Route
 
 // 5. Get Exams for a specific course
-app.get('/api/exams', async (req, res) => {
+app.get('/api/exams', protect, async (req, res) => {
   try {
     const { courseId } = req.query
     if (!courseId) return res.status(400).json({ error: 'courseId is required' })
@@ -1150,12 +1392,14 @@ app.get('/api/student/pending-surveys', protect, async (req, res) => {
     })
     if (!student) return res.status(404).json({ error: 'Student academic record not found in system' })
 
-    const allowedSemesters = getAllowedSemesters(student.academicClass?.name)
+    // Use the student's exact currentSemester for surveys — not the whole year range.
+    // This ensures a Sem 1 student ONLY sees Sem 1 courses pending surveys, not all FY courses.
+    const activeSem = student.currentSemester
 
     const courses = await prisma.course.findMany({
       where: { 
         academicClassId: student.academicClassId,
-        semester: { in: allowedSemesters }
+        semester: activeSem
       },
       include: {
         courseOutcomes: true,
@@ -1182,6 +1426,73 @@ app.get('/api/student/pending-surveys', protect, async (req, res) => {
   } catch(error) {
     console.error('Pending surveys error:', error)
     res.status(500).json({ error: 'Failed to fetch pending surveys' })
+  }
+})
+
+// Student Attainment Breakdown
+app.get('/api/student/attainment', protect, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } })
+    if (user.role !== 'STUDENT') return res.status(403).json({ error: 'Unauthorized' })
+    if (!user.rollNo) return res.status(400).json({ error: 'Missing Roll Number' })
+
+    const student = await prisma.student.findUnique({
+      where: { rollNo: user.rollNo },
+      include: { academicClass: true }
+    })
+    if (!student) return res.status(404).json({ error: 'Student not found' })
+
+    const sem = req.query.sem ? parseInt(req.query.sem) : student.currentSemester
+
+    // Fetch all courses for this student's class and semester, including COs and sub-questions with marks
+    const courses = await prisma.course.findMany({
+      where: { academicClassId: student.academicClassId, semester: sem },
+      include: {
+        courseOutcomes: {
+          include: {
+            questions: {
+              where: { parentQuestionId: { not: null } },
+              include: {
+                marks: { where: { studentId: student.id } }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    const result = courses.map(course => {
+      const outcomes = course.courseOutcomes.map(co => {
+        const subQs = co.questions
+        const totalMax = subQs.reduce((s, q) => s + (q.maxMarks || 0), 0)
+        const totalScored = subQs.reduce((s, q) => {
+          const m = q.marks[0]
+          return s + (m ? m.obtainedMarks : 0)
+        }, 0)
+        const hasData = subQs.some(q => q.marks.length > 0)
+        const threshold = totalMax * 0.40
+        return {
+          coId: co.id,
+          coNumber: co.coNumber,
+          description: co.description,
+          marksScored: hasData ? totalScored : null,
+          maxMarks: totalMax,
+          isMet: hasData && totalScored >= threshold
+        }
+      })
+
+      return {
+        courseId: course.id,
+        code: course.code,
+        name: course.name,
+        outcomes
+      }
+    })
+
+    res.json(result)
+  } catch (err) {
+    console.error('Student attainment error:', err)
+    res.status(500).json({ error: 'Failed to compute attainment' })
   }
 })
 

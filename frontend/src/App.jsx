@@ -14,8 +14,12 @@ import Reports from './pages/Reports'
 import CustomReport from './pages/CustomReport'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
+import UserProfile from './pages/UserProfile'
 import StudentDashboard from './pages/StudentDashboard'
+import MyAttainment from './pages/MyAttainment'
+import Profile from './pages/Profile'
 import PendingVerification from './pages/PendingVerification'
+import NotFound from './pages/NotFound'
 import { SemesterProvider } from './context/SemesterContext'
 
 // JWT Auth Guard Component
@@ -23,6 +27,36 @@ const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token')
   if (!token) {
     return <Navigate to="/login" replace />
+  }
+  return children
+}
+
+// Role-Based Guard for Student-only routes
+const StudentRoleGuard = ({ children }) => {
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
+  if (user?.role === 'TEACHER') {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
+// Role-Based Guard for Admin-only routes
+const AdminRoleGuard = ({ children }) => {
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
+  if (user?.role !== 'ADMIN') {
+    return <Navigate to="/dashboard" replace />
+  }
+  return children
+}
+
+// Role-Based Guard for Teacher+Admin routes (blocks Students)
+const TeacherOrAdminGuard = ({ children }) => {
+  const userString = localStorage.getItem('user')
+  const user = userString ? JSON.parse(userString) : null
+  if (user?.role === 'STUDENT') {
+    return <Navigate to="/dashboard" replace />
   }
   return children
 }
@@ -101,14 +135,18 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<IndexDashboard />} />
-                    <Route path="/classes" element={<Classes />} />
-                    <Route path="/upload" element={<Upload />} />
-                    <Route path="/exams" element={<Exams />} />
-                    <Route path="/marks" element={<MarksEntry />} />
-                    <Route path="/mapping" element={<POMapping />} />
-                    <Route path="/survey" element={<Survey />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/custom-report" element={<CustomReport />} />
+                    <Route path="/classes" element={<TeacherOrAdminGuard><Classes /></TeacherOrAdminGuard>} />
+                    <Route path="/upload" element={<AdminRoleGuard><Upload /></AdminRoleGuard>} />
+                    <Route path="/admin/user/:id" element={<AdminRoleGuard><UserProfile /></AdminRoleGuard>} />
+                    <Route path="/exams" element={<TeacherOrAdminGuard><Exams /></TeacherOrAdminGuard>} />
+                    <Route path="/marks" element={<TeacherOrAdminGuard><MarksEntry /></TeacherOrAdminGuard>} />
+                    <Route path="/mapping" element={<TeacherOrAdminGuard><POMapping /></TeacherOrAdminGuard>} />
+                    <Route path="/survey" element={<StudentRoleGuard><Survey /></StudentRoleGuard>} />
+                    <Route path="/reports" element={<TeacherOrAdminGuard><Reports /></TeacherOrAdminGuard>} />
+                    <Route path="/custom-report" element={<TeacherOrAdminGuard><CustomReport /></TeacherOrAdminGuard>} />
+                    <Route path="/my-attainment" element={<StudentRoleGuard><MyAttainment /></StudentRoleGuard>} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="*" element={<NotFound />} />
                   </Routes>
                 </ProtectedLayout>
               </SemesterProvider>

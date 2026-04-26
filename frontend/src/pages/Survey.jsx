@@ -4,6 +4,9 @@ import axios from 'axios'
 
 export default function Survey() {
   const [students, setStudents] = useState([])
+  const [allStudents, setAllStudents] = useState([])
+  const [classes, setClasses] = useState([])
+  const [selectedClassId, setSelectedClassId] = useState('')
   const [courses, setCourses] = useState([])
   const [selectedStudentId, setSelectedStudentId] = useState('')
   const [selectedCourseId, setSelectedCourseId] = useState('')
@@ -20,6 +23,16 @@ export default function Survey() {
   const userString = localStorage.getItem('user');
   const user = userString ? JSON.parse(userString) : null;
   const isStudent = user?.role === 'STUDENT';
+
+  // Filter students by selected class for admin/teacher view
+  useEffect(() => {
+    if (!selectedClassId) {
+      setStudents(allStudents)
+    } else {
+      setStudents(allStudents.filter(s => s.academicClassId === selectedClassId))
+    }
+    setSelectedStudentId('')
+  }, [selectedClassId, allStudents])
 
   // Initial Data Load
   useEffect(() => {
@@ -38,12 +51,15 @@ export default function Survey() {
              setCourses([]);
           }
         } else {
-          const [studentRes, courseRes] = await Promise.all([
+          const [studentRes, courseRes, classRes] = await Promise.all([
             axios.get('http://localhost:5000/api/students', config),
-            axios.get('http://localhost:5000/api/courses', config)
+            axios.get('http://localhost:5000/api/courses?lean=true', config),
+            axios.get('http://localhost:5000/api/academic-classes', config)
           ])
+          setAllStudents(studentRes.data)
           setStudents(studentRes.data)
           setCourses(courseRes.data)
+          setClasses(classRes.data)
         }
       } catch (err) {
         console.error(err)
@@ -171,22 +187,40 @@ export default function Survey() {
          
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {!isStudent ? (
-              <div>
-                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                   Your Profile (Roll No)
-                 </label>
-                 <select
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    disabled={loadingInitial}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
-                 >
-                    <option value="">-- Select Student --</option>
-                    {students.map(s => (
-                       <option key={s.id} value={s.id}>{s.rollNo} - {s.name}</option>
-                    ))}
-                 </select>
-              </div>
+              <>
+                <div>
+                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                     Filter by Class / Batch
+                   </label>
+                   <select
+                     value={selectedClassId}
+                     onChange={(e) => setSelectedClassId(e.target.value)}
+                     disabled={loadingInitial}
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                   >
+                     <option value="">-- All Classes --</option>
+                     {classes.map(c => (
+                       <option key={c.id} value={c.id}>{c.name}</option>
+                     ))}
+                   </select>
+                </div>
+                <div>
+                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                     Student
+                   </label>
+                   <select
+                      value={selectedStudentId}
+                      onChange={(e) => setSelectedStudentId(e.target.value)}
+                      disabled={loadingInitial}
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                   >
+                      <option value="">-- Select Student --</option>
+                      {students.map(s => (
+                         <option key={s.id} value={s.id}>{s.rollNo} - {s.name}</option>
+                      ))}
+                   </select>
+                </div>
+              </>
             ) : (
               <div>
                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Users, BookOpen, TrendingUp, Award, Activity, BarChart2, Trophy } from 'lucide-react'
 import axios from 'axios'
 import StatCard from '../components/StatCard'
@@ -9,6 +10,7 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const navigate = useNavigate()
   const { activeSemester } = useSemester()
   
   const userString = localStorage.getItem('user')
@@ -124,7 +126,7 @@ export default function Dashboard() {
           
           <div className="flex-1 flex flex-col gap-3">
             <button 
-              onClick={() => window.location.href = '/reports'}
+              onClick={() => navigate('/reports')}
               className="w-full bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 p-4 rounded-xl flex items-center justify-between transition-all group focus:outline-none"
             >
               <div className="flex items-center gap-3">

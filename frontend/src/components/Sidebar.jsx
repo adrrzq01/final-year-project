@@ -1,7 +1,7 @@
 import { NavLink, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Users, BookOpen, Upload, LayoutDashboard,
-  Settings, LogOut, GraduationCap, ClipboardList, PenTool, Link, ClipboardCheck, FileSpreadsheet, TableProperties
+  Settings, LogOut, GraduationCap, ClipboardList, PenTool, Link, ClipboardCheck, FileSpreadsheet, TableProperties, TrendingUp, User
 } from 'lucide-react'
 import logo from '../assets/Logo.png'
 import { useSemester } from '../context/SemesterContext'
@@ -16,6 +16,8 @@ const menuItems = [
   { path: '/survey', icon: ClipboardCheck, label: 'Exit Survey' },
   { path: '/reports', icon: FileSpreadsheet, label: 'CO Reports' },
   { path: '/custom-report', icon: TableProperties, label: 'Marks Matrix' },
+  { path: '/my-attainment', icon: TrendingUp, label: 'My Attainment' },
+  { path: '/profile', icon: User, label: 'My Profile' },
 ]
 
 export default function Sidebar() {
@@ -28,9 +30,13 @@ export default function Sidebar() {
 
   const filteredMenuItems = menuItems.filter(item => {
     if (user?.role === 'STUDENT') {
-      return ['/dashboard', '/survey'].includes(item.path) || item.label === 'My Attainment'
+      return ['/dashboard', '/survey', '/my-attainment', '/profile'].includes(item.path)
     }
-    return true
+    if (user?.role === 'TEACHER') {
+      return !['/survey', '/upload', '/my-attainment'].includes(item.path)
+    }
+    // ADMIN: hide student-only pages
+    return !['/my-attainment'].includes(item.path)
   })
 
   return (
