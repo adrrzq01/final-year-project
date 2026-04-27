@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, AlertCircle, Save, Loader2, Link as LinkIcon } from 'lucide-react'
+import { useCachedState } from '../context/PageCacheContext'
+import { CheckCircle2, AlertCircle, Save, Loader2, Link as LinkIcon, X } from 'lucide-react'
 import axios from 'axios'
 
 export default function POMapping() {
   const [courses, setCourses] = useState([])
-  const [selectedCourseId, setSelectedCourseId] = useState('')
-  const [courseOutcomes, setCourseOutcomes] = useState([])
+  const [selectedCourseId, setSelectedCourseId] = useCachedState('po_selectedCourseId', '')
+  const [courseOutcomes, setCourseOutcomes] = useCachedState('po_courseOutcomes', [])
   
   const [programOutcomes, setProgramOutcomes] = useState([])
   const [programSpecificOutcomes, setProgramSpecificOutcomes] = useState([])
   
   // Matrix format: mappings['co_id']['po_or_pso_id'] = correlationLevel
-  const [mappings, setMappings] = useState({})
+  const [mappings, setMappings] = useCachedState('po_mappings', {})
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -209,14 +210,17 @@ export default function POMapping() {
              </p>
           </div>
       ) : (
-        <div className="bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-in fade-in duration-500">
-           
+        <div className="space-y-8">
+        <div className="relative bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden animate-in fade-in duration-500">
+           <button onClick={() => setSelectedCourseId('')} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+             <X size={20} />
+           </button>
            <div className="overflow-x-auto custom-scrollbar">
-             <table className="w-full text-left text-sm whitespace-nowrap">
+             <table className="w-full text-left text-sm">
                <thead className="bg-slate-50 dark:bg-slate-900 border-b-2 border-slate-200 dark:border-slate-700">
                  <tr>
                    <th className="px-6 py-5 font-extrabold text-slate-600 dark:text-slate-400 tracking-widest uppercase text-xs sticky left-0 bg-slate-50 dark:bg-slate-900 z-10 border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                      Internal Core Outcomes
+                      Internal Core Outcomes (COs)
                    </th>
                    {allOutcomes.map((outcome) => (
                      <th key={outcome.id} className="px-3 py-4 font-bold text-center text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-700/50 min-w-[65px]" title={outcome.description}>
@@ -229,9 +233,9 @@ export default function POMapping() {
                   {courseOutcomes.map((co) => (
                     <tr key={co.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group">
                       <td className="px-6 py-4 font-semibold text-slate-800 dark:text-slate-200 sticky left-0 bg-white dark:bg-slate-800 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 z-10 border-r border-slate-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]" title={co.description}>
-                         <div className="flex flex-col">
-                           <span className="text-[13px]">{co.coNumber}</span>
-                           <span className="text-[11px] text-slate-400 font-normal truncate max-w-[200px] mt-0.5">{co.description}</span>
+                         <div className="flex flex-col min-w-[200px]">
+                           <span className="text-[13px] font-bold">{co.coNumber}</span>
+                           <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-1 break-words">{co.description}</span>
                          </div>
                       </td>
                       
@@ -260,19 +264,62 @@ export default function POMapping() {
              </table>
            </div>
 
-           {/* Footer Action */}
-           <div className="px-6 py-5 border-t border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/30 flex justify-end">
-             <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2.5 bg-indigo-600 text-white font-bold px-7 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-70 active:scale-95 transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
-             >
-                {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                {saving ? 'Transmitting Data...' : 'Lock Articulation Matrix'}
-             </button>
+          <div className="flex justify-end pt-4 pb-8 pr-6">
+            <button
+              onClick={handleSave}
+              disabled={saving || !selectedCourseId}
+              className="flex items-center gap-3 bg-indigo-600 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+              {saving ? 'Synchronizing...' : 'Lock Articulation Matrix'}
+            </button>
+          </div>
+
+          {/* Reference Table for POs and PSOs */}
+          <div className="mt-12 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 p-8 shadow-sm">
+             <div className="flex items-center gap-3 mb-8">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
+                   <LinkIcon size={20} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                   <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Outcome Reference Glossary</h3>
+                   <p className="text-sm text-slate-500 dark:text-slate-400">Definitions of National Program Outcomes and Program Specific Outcomes.</p>
+                </div>
+             </div>
+
+             <div className="grid md:grid-cols-2 gap-10">
+                {/* POs */}
+                <div className="space-y-4">
+                   <h4 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest border-b border-indigo-100 dark:border-indigo-900/30 pb-2">National Program Outcomes (PO1 - PO12)</h4>
+                   <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {programOutcomes.map(po => (
+                         <div key={po.id} className="flex gap-4 items-start group">
+                            <span className="font-black text-slate-400 dark:text-slate-600 group-hover:text-indigo-500 transition-colors text-xs mt-0.5">{po.code}</span>
+                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">{po.description}</p>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+
+                {/* PSOs */}
+                <div className="space-y-4">
+                   <h4 className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border-b border-emerald-100 dark:border-emerald-900/30 pb-2">Program Specific Outcomes (PSOs)</h4>
+                   <div className="space-y-4">
+                      {programSpecificOutcomes.map(pso => (
+                         <div key={pso.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 group">
+                            <div className="flex items-center gap-2 mb-2">
+                               <span className="text-[10px] font-black px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-md uppercase">{pso.code}</span>
+                            </div>
+                            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-semibold">{pso.description}</p>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
            </div>
-        </div>
-      )}
-    </div>
-  )
-}
+          </div>
+         </div>
+        )}
+      </div>
+    )
+  }

@@ -95,7 +95,7 @@ export default function UserProfile() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-10">
-      <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors">
+      <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors">
         <ArrowLeft size={16} /> Back to Directory
       </button>
 

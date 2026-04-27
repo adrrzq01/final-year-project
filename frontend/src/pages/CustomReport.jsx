@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { FileSpreadsheet, Loader2, ChevronDown, Download, TableProperties, Award } from 'lucide-react'
+import { useCachedState } from '../context/PageCacheContext'
+import { FileSpreadsheet, Loader2, ChevronDown, Download, TableProperties, Award, X } from 'lucide-react'
 import axios from 'axios'
 
 const ATTAINMENT_COLOR = {
@@ -24,8 +25,8 @@ function groupColumnsByExam(columns) {
 
 export default function CustomReport() {
   const [courses, setCourses] = useState([])
-  const [selectedCourseId, setSelectedCourseId] = useState('')
-  const [report, setReport] = useState(null)
+  const [selectedCourseId, setSelectedCourseId] = useCachedState('cust_selectedCourseId', '')
+  const [report, setReport] = useCachedState('cust_report', null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const tableRef = useRef(null)
@@ -145,7 +146,10 @@ export default function CustomReport() {
       {/* Main Table */}
       {report && !loading && (
         <>
-          <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="relative bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <button onClick={() => { setSelectedCourseId(''); setReport(null); }} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+               <X size={20} />
+            </button>
             <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 {report.courseCode} – {report.courseName}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useCachedState } from '../context/PageCacheContext'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { ShieldCheck, UserCheck, AlertCircle, Loader2, GraduationCap, Users, BookOpen, TrendingUp, Award, RefreshCcw } from 'lucide-react'
@@ -15,8 +16,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [dirLoading, setDirLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('PENDING')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [activeTab, setActiveTab] = useCachedState('admin_activeTab', 'PENDING')
+  const [searchTerm, setSearchTerm] = useCachedState('admin_searchTerm', '')
   const { showAlert } = useAlert()
 
   // Analytics state
@@ -26,10 +27,10 @@ export default function AdminDashboard() {
   const [parityLoading, setParityLoading] = useState(true)
 
   // Directory Filters
-  const [facultyDeptFilter, setFacultyDeptFilter] = useState('')
-  const [studentDeptFilter, setStudentDeptFilter] = useState('')
-  const [studentClassFilter, setStudentClassFilter] = useState('')
-  const [studentDivFilter, setStudentDivFilter] = useState('')
+  const [facultyDeptFilter, setFacultyDeptFilter] = useCachedState('admin_facDept', '')
+  const [studentDeptFilter, setStudentDeptFilter] = useCachedState('admin_studDept', '')
+  const [studentClassFilter, setStudentClassFilter] = useCachedState('admin_studClass', '')
+  const [studentDivFilter, setStudentDivFilter] = useCachedState('admin_studDiv', '')
 
   useEffect(() => {
     fetchPendingUsers()

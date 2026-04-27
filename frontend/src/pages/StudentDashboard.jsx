@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCachedState } from "../context/PageCacheContext";
 import { BookOpen, TrendingUp, Presentation, AlertCircle, Loader2, ClipboardCheck, Star, X } from "lucide-react";
 import axios from "axios";
 import { useAlert } from "../context/AlertContext";
@@ -9,14 +10,14 @@ export default function StudentDashboard() {
   const [myMarks, setMyMarks] = useState([]);
   const [courseAttainmentMap, setCourseAttainmentMap] = useState({});
   const [currentSem, setCurrentSem] = useState(1);
-  const [targetSem, setTargetSem] = useState(1);
+  const [targetSem, setTargetSem] = useCachedState("stud_targetSem", 1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { showAlert } = useAlert();
   
   // Survey Modal State
-  const [activeSurvey, setActiveSurvey] = useState(null);
-  const [ratings, setRatings] = useState({});
+  const [activeSurvey, setActiveSurvey] = useCachedState("stud_activeSurvey", null);
+  const [ratings, setRatings] = useCachedState("stud_ratings", {});
   const [submitting, setSubmitting] = useState(false);
 
   const userString = localStorage.getItem("user");

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
-import { ChevronDown, Save, RotateCcw, Download, Table2, UploadCloud, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet } from 'lucide-react'
+import { useCachedState } from '../context/PageCacheContext'
+import { ChevronDown, Save, RotateCcw, Download, Table2, UploadCloud, CheckCircle2, AlertTriangle, XCircle, FileSpreadsheet, X } from 'lucide-react'
 import axios from 'axios'
 import Papa from 'papaparse'
 import { useAlert } from '../context/AlertContext'
@@ -245,23 +246,23 @@ const CSVUploader = ({ courseId, examId, subQuestions, refreshGrid, showAlert })
 export default function MarksEntry() {
   const { showAlert, showConfirm } = useAlert()
   const [courses, setCourses] = useState([])
-  const [courseSelected, setCourseSelected] = useState('')
+  const [courseSelected, setCourseSelected] = useCachedState('marks_courseSelected', '')
   
-  const [exams, setExams] = useState([])
-  const [examSelected, setExamSelected] = useState('')
+  const [exams, setExams] = useCachedState('marks_exams', [])
+  const [examSelected, setExamSelected] = useCachedState('marks_examSelected', '')
   
-  const [students, setStudents] = useState([])
-  const [subQuestions, setSubQuestions] = useState([])
+  const [students, setStudents] = useCachedState('marks_students', [])
+  const [subQuestions, setSubQuestions] = useCachedState('marks_subQuestions', [])
   
   // Matrix state: { "studentId-subQuestionId": obtainedMarks }
-  const [marksData, setMarksData] = useState({})
+  const [marksData, setMarksData] = useCachedState('marks_marksData', {})
   
-  const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'csv'
+  const [activeTab, setActiveTab] = useCachedState('marks_activeTab', 'manual') // 'manual' | 'csv'
   const [isSaving, setIsSaving] = useState(false)
   const [loadingGrid, setLoadingGrid] = useState(false)
   const [savedSessions, setSavedSessions] = useState([])
-  const [showGrid, setShowGrid] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [showGrid, setShowGrid] = useCachedState('marks_showGrid', false)
+  const [currentPage, setCurrentPage] = useCachedState('marks_currentPage', 1)
   const PAGE_SIZE = 20
 
   // 1. Fetch Courses on Mount
@@ -569,7 +570,10 @@ export default function MarksEntry() {
               showAlert={showAlert}
             />
           ) : (
-            <div className="bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-colors duration-300">
+            <div className="relative bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-colors duration-300">
+              <button onClick={() => setShowGrid(false)} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+                <X size={20} />
+              </button>
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-sm border-collapse">
                   <thead>

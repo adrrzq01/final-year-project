@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useCachedState } from '../context/PageCacheContext'
 import { useLocation } from 'react-router-dom'
-import { Clock, Sun, Moon, ChevronDown } from 'lucide-react'
+import { Clock, Sun, Moon, ChevronDown, Info, X } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
 const routeTitles = {
@@ -21,6 +22,7 @@ export default function Topbar() {
   const { pathname } = useLocation()
   const title = routeTitles[pathname] || 'Bridgify'
   const { dark, toggle } = useTheme()
+  const [showPoModal, setShowPoModal] = useState(false)
 
   const [tString, setTString] = useState('')
   
@@ -69,6 +71,16 @@ export default function Topbar() {
 
       {/* Right controls */}
       <div className="flex items-center gap-3">
+        {['/dashboard', '/mapping', '/my-attainment'].includes(pathname) && (
+          <button
+            onClick={() => setShowPoModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+          >
+            <Info size={14} />
+            PO References
+          </button>
+        )}
+
         {/* Dark mode toggle */}
         <button
           onClick={toggle}

@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react'
-import { GraduationCap, CheckCircle2, AlertCircle, Loader2, Send } from 'lucide-react'
+import { useCachedState } from '../context/PageCacheContext'
+import { GraduationCap, CheckCircle2, AlertCircle, Loader2, Send, X } from 'lucide-react'
 import axios from 'axios'
 
 export default function Survey() {
   const [students, setStudents] = useState([])
   const [allStudents, setAllStudents] = useState([])
   const [classes, setClasses] = useState([])
-  const [selectedClassId, setSelectedClassId] = useState('')
+  const [selectedClassId, setSelectedClassId] = useCachedState('srv_classId', '')
   const [courses, setCourses] = useState([])
-  const [selectedStudentId, setSelectedStudentId] = useState('')
-  const [selectedCourseId, setSelectedCourseId] = useState('')
+  const [selectedStudentId, setSelectedStudentId] = useCachedState('srv_studId', '')
+  const [selectedCourseId, setSelectedCourseId] = useCachedState('srv_courseId', '')
   const [courseOutcomes, setCourseOutcomes] = useState([])
   
   // surveyRatings[coId] = 1, 2, or 3
-  const [surveyRatings, setSurveyRatings] = useState({})
+  const [surveyRatings, setSurveyRatings] = useCachedState('srv_ratings', {})
   
   const [loadingInitial, setLoadingInitial] = useState(true)
   const [loadingCOs, setLoadingCOs] = useState(false)
@@ -31,7 +32,6 @@ export default function Survey() {
     } else {
       setStudents(allStudents.filter(s => s.academicClassId === selectedClassId))
     }
-    setSelectedStudentId('')
   }, [selectedClassId, allStudents])
 
   // Initial Data Load
@@ -180,7 +180,13 @@ export default function Survey() {
       )}
 
       {/* Identifiers Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
+      <div className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
+         <button 
+           onClick={() => { setSelectedClassId(''); setSelectedStudentId(''); setSelectedCourseId(''); setSurveyRatings({}); setMessage({text:'', type:''}); }}
+           className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50"
+         >
+           <X size={20} />
+         </button>
          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-4 border-b border-slate-100 dark:border-slate-700/50 pb-3">
             1. Identify Yourself
          </h3>
@@ -291,7 +297,7 @@ export default function Survey() {
                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">
                               {co.coNumber}
                            </p>
-                           <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                           <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4 break-words">
                               {co.description}
                            </p>
                            

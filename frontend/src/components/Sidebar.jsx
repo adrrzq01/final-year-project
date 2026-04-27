@@ -33,7 +33,7 @@ export default function Sidebar() {
       return ['/dashboard', '/survey', '/my-attainment', '/profile'].includes(item.path)
     }
     if (user?.role === 'TEACHER') {
-      return !['/survey', '/upload', '/my-attainment'].includes(item.path)
+      return !['/survey', '/my-attainment'].includes(item.path)
     }
     // ADMIN: hide student-only pages
     return !['/my-attainment'].includes(item.path)

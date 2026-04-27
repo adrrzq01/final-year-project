@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2, Save, ChevronDown, FileText } from 'lucide-react'
+import { useState, useEffect, Fragment } from 'react'
+import { useCachedState } from '../context/PageCacheContext'
+import { Plus, Trash2, Save, ChevronDown, FileText, X } from 'lucide-react'
 import axios from 'axios'
 import { useAlert } from '../context/AlertContext'
 
@@ -27,11 +28,11 @@ const allExams = [
 
 export default function Exams() {
   const [courses, setCourses] = useState([])
-  const [questions, setQuestions] = useState([]) // start empty
-  const [examType, setExamType] = useState('ISA-1(T)')
+  const [questions, setQuestions] = useCachedState('exams_questions', [])
+  const [examType, setExamType] = useCachedState('exams_examType', 'ISA-1(T)')
   const [saved, setSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [courseSelected, setCourseSelected] = useState('')
+  const [courseSelected, setCourseSelected] = useCachedState('exams_courseSelected', '')
   const [existingExams, setExistingExams] = useState([])
   const [customTarget, setCustomTarget] = useState('')
   const { showAlert, showConfirm } = useAlert()
@@ -309,7 +310,12 @@ export default function Exams() {
 
       {/* Empty state OR table */}
       {questions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 transition-colors duration-300">
+        <div className="relative flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 transition-colors duration-300">
+          {courseSelected && (
+             <button onClick={() => { setCourseSelected(''); setQuestions([]) }} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+               <X size={20} />
+             </button>
+          )}
           <div className="w-20 h-20 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center mb-5">
             <FileText size={34} className="text-indigo-400 dark:text-indigo-500" />
           </div>
@@ -325,7 +331,12 @@ export default function Exams() {
           </button>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden transition-colors duration-300">
+        <div className="relative bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden transition-colors duration-300">
+          {courseSelected && (
+             <button onClick={() => { setCourseSelected(''); setQuestions([]) }} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+               <X size={20} />
+             </button>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -340,7 +351,7 @@ export default function Exams() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
                 {questions.map((q, i) => (
-                  <React.Fragment key={q.id}>
+                  <Fragment key={q.id}>
                     {/* Main Question Row */}
                     <tr key={`main-${q.id}`} className="bg-slate-50/50 dark:bg-slate-800/40 group border-t-2 border-slate-200 dark:border-slate-700/80">
                       <td className="px-5 py-3 text-slate-400 dark:text-slate-500 font-bold text-xs">{i + 1}</td>
@@ -437,7 +448,7 @@ export default function Exams() {
                         </td>
                       </tr>
                     ))}
-                  </React.Fragment>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

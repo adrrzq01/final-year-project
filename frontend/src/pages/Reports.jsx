@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileSpreadsheet, Loader2, Download, AlertCircle, Printer } from 'lucide-react'
+import { useCachedState } from '../context/PageCacheContext'
+import { FileSpreadsheet, Loader2, Download, AlertCircle, Printer, X } from 'lucide-react'
 import axios from 'axios'
 
 export default function Reports() {
   const [courses, setCourses] = useState([])
-  const [selectedCourseId, setSelectedCourseId] = useState('')
-  const [reportData, setReportData] = useState(null)
+  const [selectedCourseId, setSelectedCourseId] = useCachedState('rep_selectedCourseId', '')
+  const [reportData, setReportData] = useCachedState('rep_reportData', null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const printRef = useRef(null)
@@ -301,8 +302,10 @@ export default function Reports() {
             <Loader2 className="animate-spin text-emerald-500" size={32} />
           </div>
       ) : reportData ? (
-        <div ref={printRef} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm animate-in fade-in">
-          
+        <div ref={printRef} className="relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm animate-in fade-in">
+          <button onClick={() => { setSelectedCourseId(''); setReportData(null); }} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors z-50">
+             <X size={20} />
+          </button>
           <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50">
              <div>
                 <h3 className="font-bold text-slate-800 dark:text-slate-200 tracking-tight">

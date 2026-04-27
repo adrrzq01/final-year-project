@@ -21,6 +21,7 @@ import Profile from './pages/Profile'
 import PendingVerification from './pages/PendingVerification'
 import NotFound from './pages/NotFound'
 import { SemesterProvider } from './context/SemesterContext'
+import { PageCacheProvider } from './context/PageCacheContext'
 
 // JWT Auth Guard Component
 const ProtectedRoute = ({ children }) => {
@@ -131,12 +132,13 @@ function App() {
           element={
             <ProtectedRoute>
               <SemesterProvider>
-                <ProtectedLayout>
-                  <Routes>
+                <PageCacheProvider>
+                  <ProtectedLayout>
+                    <Routes>
                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                     <Route path="/dashboard" element={<IndexDashboard />} />
                     <Route path="/classes" element={<TeacherOrAdminGuard><Classes /></TeacherOrAdminGuard>} />
-                    <Route path="/upload" element={<AdminRoleGuard><Upload /></AdminRoleGuard>} />
+                    <Route path="/upload" element={<TeacherOrAdminGuard><Upload /></TeacherOrAdminGuard>} />
                     <Route path="/admin/user/:id" element={<AdminRoleGuard><UserProfile /></AdminRoleGuard>} />
                     <Route path="/exams" element={<TeacherOrAdminGuard><Exams /></TeacherOrAdminGuard>} />
                     <Route path="/marks" element={<TeacherOrAdminGuard><MarksEntry /></TeacherOrAdminGuard>} />
@@ -148,7 +150,8 @@ function App() {
                     <Route path="/profile" element={<Profile />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
-                </ProtectedLayout>
+                  </ProtectedLayout>
+                </PageCacheProvider>
               </SemesterProvider>
             </ProtectedRoute>
           } 

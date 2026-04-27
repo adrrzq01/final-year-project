@@ -180,7 +180,7 @@ export default function MyAttainment() {
 
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 font-mono mb-0.5">{co.coNumber}</p>
-                          <p className="text-sm text-slate-700 dark:text-slate-300 line-clamp-1">{co.description}</p>
+                          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed break-words">{co.description}</p>
                         </div>
 
                         <div className="text-right shrink-0">
