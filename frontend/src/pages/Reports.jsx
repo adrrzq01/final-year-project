@@ -5,6 +5,8 @@ import axios from 'axios'
 
 export default function Reports() {
   const [courses, setCourses] = useState([])
+  const [classes, setClasses] = useState([])
+  const [selectedDept, setSelectedDept] = useCachedState('rep_selectedDept', '')
   const [selectedClass, setSelectedClass] = useCachedState('rep_selectedClass', '')
   const [selectedDivision, setSelectedDivision] = useCachedState('rep_selectedDivision', '')
   const [selectedCourseId, setSelectedCourseId] = useCachedState('rep_selectedCourseId', '')
@@ -12,28 +14,33 @@ export default function Reports() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const printRef = useRef(null)
-
-  // Extract unique identifiers for filters
-  const uniqueClasses = [...new Set(courses.map(c => c.academicClass?.name))].filter(Boolean).sort()
-  const uniqueDivisions = [...new Set(courses.map(c => c.academicClass?.division))].filter(Boolean).sort()
+  
+  const departments = ['BCA', 'BA', 'BCOM', 'BBA']
+  const uniqueClasses = [...new Set(classes.map(c => c.name))]
+    .filter(Boolean)
+    .filter(cls => !selectedDept || cls.endsWith(selectedDept))
+    .sort()
+  const uniqueDivisions = [...new Set(classes.filter(c => c.name === selectedClass).map(c => c.division))].filter(Boolean).sort()
 
   const filteredCourses = courses.filter(c => {
-    const classMatch = !selectedClass || c.academicClass?.name === selectedClass
-    const divMatch = !selectedDivision || c.academicClass?.division === selectedDivision
-    return classMatch && divMatch
+    return !selectedClass || c.academicClass?.name === selectedClass
   })
 
   useEffect(() => {
-    const fetchCourses = async () => {
+    const fetchInitial = async () => {
       try {
         const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-        const res = await axios.get('http://localhost:5000/api/courses?lean=true', config)
-        setCourses(res.data)
+        const [courseRes, classRes] = await Promise.all([
+          axios.get('http://localhost:5000/api/courses?lean=true', config),
+          axios.get('http://localhost:5000/api/academic-classes', config)
+        ])
+        setCourses(courseRes.data)
+        setClasses(classRes.data)
       } catch (err) {
-        console.error('Failed to load courses', err)
+        console.error('Failed to load initial data', err)
       }
     }
-    fetchCourses()
+    fetchInitial()
   }, [])
 
   useEffect(() => {
@@ -49,7 +56,7 @@ export default function Reports() {
     setError('')
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      const res = await axios.get(`http://localhost:5000/api/reports/consolidated/${selectedCourseId}`, config)
+      const res = await axios.get(`http://localhost:5000/api/reports/consolidated/${selectedCourseId}?division=${selectedDivision}`, config)
       setReportData(res.data)
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report data')
@@ -170,46 +177,80 @@ export default function Reports() {
             <ClipboardList size={22} className="text-blue-600 dark:text-blue-400" />
             Consolidated Marks Report
           </h2>
-          <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
-            <div className="flex-1 min-w-[140px]">
-               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
-               <select
-                  value={selectedClass}
-                  onChange={(e) => { setSelectedClass(e.target.value); setSelectedCourseId(''); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
-               >
-                  <option value="">-- All Classes --</option>
-                  {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
-               </select>
-            </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Summary of total marks achieved by students across all exams.
+          </p>
+        </div>
+      </div>
 
-            <div className="flex-1 min-w-[140px]">
-               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
-               <select
-                  value={selectedDivision}
-                  onChange={(e) => { setSelectedDivision(e.target.value); setSelectedCourseId(''); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
-               >
-                  <option value="">-- All Divisions --</option>
-                  {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
-               </select>
-            </div>
+      {/* Filters Row */}
+      <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
+        <div className="flex-1 min-w-[140px]">
+           <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Department</label>
+           <select
+              value={selectedDept}
+              onChange={(e) => { 
+                setSelectedDept(e.target.value); 
+                setSelectedClass(''); 
+                setSelectedDivision(''); 
+                setSelectedCourseId(''); 
+              }}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+           >
+              <option value="">— Select Dept —</option>
+              {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+           </select>
+        </div>
 
-            <div className="flex-[2] min-w-[240px]">
-               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider text-center lg:text-left">Select Target Course</label>
-               <select
-                  value={selectedCourseId}
-                  onChange={(e) => setSelectedCourseId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
-               >
-                  <option value="">-- Choose a Course --</option>
-                  {filteredCourses.map(course => (
-                     <option key={course.id} value={course.id}>
-                        {course.code} - {course.name}
-                     </option>
-                  ))}
-               </select>
-            </div>
+        <div className="flex-1 min-w-[140px]">
+           <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
+           <select
+              value={selectedClass}
+              disabled={!selectedDept}
+              onChange={(e) => { 
+                setSelectedClass(e.target.value); 
+                setSelectedDivision(''); 
+                setSelectedCourseId(''); 
+              }}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+           >
+              <option value="">— Select Class —</option>
+              {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+           </select>
+        </div>
+
+        <div className="flex-1 min-w-[140px]">
+           <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
+           <select
+              value={selectedDivision}
+              disabled={!selectedClass}
+              onChange={(e) => { 
+                setSelectedDivision(e.target.value); 
+                setSelectedCourseId(''); 
+              }}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+           >
+              <option value="">— Select Division —</option>
+              {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
+           </select>
+        </div>
+
+        <div className="flex-[2] min-w-[240px]">
+           <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Target Course</label>
+           <select
+              value={selectedCourseId}
+              disabled={!selectedDivision}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+           >
+              <option value="">— Choose Course —</option>
+              {filteredCourses.map(course => (
+                 <option key={course.id} value={course.id}>
+                    {course.code} - {course.name}
+                 </option>
+              ))}
+           </select>
+        </div>
       </div>
 
       {error && (

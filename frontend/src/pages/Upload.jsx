@@ -5,12 +5,16 @@ import Papa from 'papaparse'
 
 export default function Upload() {
   const [classes, setClasses] = useState([])
+  const [selectedDept, setSelectedDept] = useState('')
   const [selectedClassName, setSelectedClassName] = useState('')
   const [selectedDivName, setSelectedDivName] = useState('')
   const [classSelected, setClassSelected] = useState('')
 
-  const uniqueClassNames = [...new Set(classes.map(c => c.name))].sort()
-  const uniqueDivs = [...new Set(classes.map(c => c.division))].filter(Boolean).sort()
+  const departments = ['BCA', 'BA', 'BCOM', 'BBA']
+  const uniqueClassNames = [...new Set(classes.map(c => c.name))]
+    .filter(name => !selectedDept || name.endsWith(selectedDept))
+    .sort()
+  const uniqueDivs = [...new Set(classes.filter(c => c.name === selectedClassName).map(c => c.division))].filter(Boolean).sort()
 
   useEffect(() => {
     const found = classes.find(c => c.name === selectedClassName && c.division === selectedDivName)
@@ -139,32 +143,53 @@ export default function Upload() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Upload Data</h2>
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Import student lists via CSV files to save to the database</p>
         </div>
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-             <div className="flex-1 relative">
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
-                <select
-                  value={selectedClassName}
-                  onChange={(e) => setSelectedClassName(e.target.value)}
-                  className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm"
-                >
-                  <option value="">-- All Classes --</option>
-                  {uniqueClassNames.map(cls => <option key={cls} value={cls}>{cls}</option>)}
-                </select>
-                <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
-             </div>
-             <div className="flex-1 relative">
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
-                <select
-                  value={selectedDivName}
-                  onChange={(e) => setSelectedDivName(e.target.value)}
-                  className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm"
-                >
-                  <option value="">-- All Divisions --</option>
-                  {uniqueDivs.map(div => <option key={div} value={div}>Division {div}</option>)}
-                </select>
-                <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
-             </div>
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="flex-1 relative">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Department</label>
+             <select
+               value={selectedDept}
+               onChange={(e) => { 
+                 setSelectedDept(e.target.value); 
+                 setSelectedClassName(''); 
+                 setSelectedDivName(''); 
+               }}
+               className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm"
+             >
+               <option value="">— Select Dept —</option>
+               {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+             </select>
+             <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
           </div>
+          <div className="flex-1 relative">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
+            <select
+              value={selectedClassName}
+              disabled={!selectedDept}
+              onChange={(e) => { 
+                setSelectedClassName(e.target.value); 
+                setSelectedDivName(''); 
+              }}
+              className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">— Select Class —</option>
+              {uniqueClassNames.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+            </select>
+            <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
+          </div>
+          <div className="flex-1 relative">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
+            <select
+              value={selectedDivName}
+              disabled={!selectedClassName}
+              onChange={(e) => setSelectedDivName(e.target.value)}
+              className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">— Select Division —</option>
+              {uniqueDivs.map(div => <option key={div} value={div}>Division {div}</option>)}
+            </select>
+            <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
+          </div>
+        </div>
       </div>
 
       {/* Drop Zone */}

@@ -758,14 +758,11 @@ app.delete('/api/exams/:id', protect, requireTeacherOrAdmin, async (req, res) =>
 
 app.get('/api/courses/:id/enrollments-exams', protect, async (req, res) => {
   try {
+    const { division } = req.query
     const course = await prisma.course.findUnique({
       where: { id: req.params.id },
       include: {
-        academicClass: {
-          include: { 
-            students: { orderBy: { rollNo: 'asc' } } 
-          }
-        },
+        academicClass: true,
         exams: {
           include: {
             questions: {
@@ -785,8 +782,28 @@ app.get('/api/courses/:id/enrollments-exams', protect, async (req, res) => {
     
     if (!course) return res.status(404).json({ error: 'Course not found' })
 
+    let students = []
+    if (division) {
+      // Find the specific class for this division
+      const targetClass = await prisma.academicClass.findFirst({
+        where: { name: course.academicClass.name, division: division }
+      })
+      if (targetClass) {
+        students = await prisma.student.findMany({
+          where: { academicClassId: targetClass.id },
+          orderBy: { rollNo: 'asc' }
+        })
+      }
+    } else {
+      // Fallback to the course's linked class (usually for all divisions or if no division specified)
+      students = await prisma.student.findMany({
+        where: { academicClassId: course.academicClassId },
+        orderBy: { rollNo: 'asc' }
+      })
+    }
+
     res.json({
-      students: course.academicClass?.students || [],
+      students: students,
       exams: course.exams || []
     })
   } catch (err) {
@@ -1029,20 +1046,31 @@ app.get('/api/reports/attainment/:courseId', async (req, res) => {
 app.get('/api/reports/consolidated/:courseId', protect, async (req, res) => {
   try {
     const { courseId } = req.params
-
+    const { division } = req.query
     const course = await prisma.course.findUnique({
       where: { id: courseId },
-      include: {
-        academicClass: {
-          include: {
-            students: { orderBy: { rollNo: 'asc' } }
-          }
-        }
-      }
+      include: { academicClass: true }
     })
 
     if (!course) return res.status(404).json({ error: 'Course not found' })
-    const students = course.academicClass.students
+
+    let students = []
+    if (division) {
+      const targetClass = await prisma.academicClass.findFirst({
+        where: { name: course.academicClass.name, division: division }
+      })
+      if (targetClass) {
+        students = await prisma.student.findMany({
+          where: { academicClassId: targetClass.id },
+          orderBy: { rollNo: 'asc' }
+        })
+      }
+    } else {
+      students = await prisma.student.findMany({
+        where: { academicClassId: course.academicClassId },
+        orderBy: { rollNo: 'asc' }
+      })
+    }
 
     const exams = await prisma.exam.findMany({
       where: { courseId },
@@ -1102,21 +1130,33 @@ app.get('/api/reports/consolidated/:courseId', protect, async (req, res) => {
 app.get('/api/reports/detailed/:courseId', async (req, res) => {
   try {
     const { courseId } = req.params
+    const { division } = req.query
     
-    // Fetch Course & Enrolled Students
+    // Fetch Course
     const course = await prisma.course.findUnique({
       where: { id: courseId },
-      include: {
-        academicClass: {
-          include: {
-            students: { orderBy: { rollNo: 'asc' } }
-          }
-        }
-      }
+      include: { academicClass: true }
     })
     
     if (!course) return res.status(404).json({ error: 'Course not found' })
-    const students = course.academicClass.students
+
+    let students = []
+    if (division) {
+      const targetClass = await prisma.academicClass.findFirst({
+        where: { name: course.academicClass.name, division: division }
+      })
+      if (targetClass) {
+        students = await prisma.student.findMany({
+          where: { academicClassId: targetClass.id },
+          orderBy: { rollNo: 'asc' }
+        })
+      }
+    } else {
+      students = await prisma.student.findMany({
+        where: { academicClassId: course.academicClassId },
+        orderBy: { rollNo: 'asc' }
+      })
+    }
 
     // Fetch all exams logically tied to course, including nested questions & marks
     const exams = await prisma.exam.findMany({
@@ -1681,17 +1721,14 @@ app.get('/api/student/marks', protect, async (req, res) => {
 app.get('/api/reports/custom/:courseId', protect, async (req, res) => {
   try {
     const { courseId } = req.params
+    const { division } = req.query
 
     // Fetch course with all exams -> questions -> sub-questions -> COs -> marks
     const course = await prisma.course.findUnique({
       where: { id: courseId },
       include: {
         courseOutcomes: { orderBy: { coNumber: 'asc' } },
-        academicClass: {
-          include: {
-            students: { orderBy: { rollNo: 'asc' } }
-          }
-        },
+        academicClass: true,
         exams: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -1715,7 +1752,23 @@ app.get('/api/reports/custom/:courseId', protect, async (req, res) => {
 
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
-    const students = course.academicClass?.students || []
+    let students = []
+    if (division) {
+      const targetClass = await prisma.academicClass.findFirst({
+        where: { name: course.academicClass.name, division: division }
+      })
+      if (targetClass) {
+        students = await prisma.student.findMany({
+          where: { academicClassId: targetClass.id },
+          orderBy: { rollNo: 'asc' }
+        })
+      }
+    } else {
+      students = await prisma.student.findMany({
+        where: { academicClassId: course.academicClassId },
+        orderBy: { rollNo: 'asc' }
+      })
+    }
 
     // Build flat list of sub-questions (columns)
     const columns = []

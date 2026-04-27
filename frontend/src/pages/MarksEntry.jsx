@@ -246,17 +246,21 @@ const CSVUploader = ({ courseId, examId, subQuestions, refreshGrid, showAlert })
 export default function MarksEntry() {
   const { showAlert, showConfirm } = useAlert()
   const [courses, setCourses] = useState([])
+  const [classes, setClasses] = useState([])
+  const [selectedDept, setSelectedDept] = useCachedState('marks_selectedDept', '')
   const [selectedClass, setSelectedClass] = useCachedState('marks_selectedClass', '')
   const [selectedDivision, setSelectedDivision] = useCachedState('marks_selectedDivision', '')
   const [courseSelected, setCourseSelected] = useCachedState('marks_courseSelected', '')
   
-  const uniqueClasses = [...new Set(courses.map(c => c.academicClass?.name))].filter(Boolean).sort()
-  const uniqueDivisions = [...new Set(courses.map(c => c.academicClass?.division))].filter(Boolean).sort()
+  const departments = ['BCA', 'BA', 'BCOM', 'BBA']
+  const uniqueClasses = [...new Set(classes.map(c => c.name))]
+    .filter(Boolean)
+    .filter(cls => !selectedDept || cls.endsWith(selectedDept))
+    .sort()
+  const uniqueDivisions = [...new Set(classes.filter(c => c.name === selectedClass).map(c => c.division))].filter(Boolean).sort()
 
   const filteredCourses = courses.filter(c => {
-    const classMatch = !selectedClass || c.academicClass?.name === selectedClass
-    const divMatch = !selectedDivision || c.academicClass?.division === selectedDivision
-    return classMatch && divMatch
+    return !selectedClass || c.academicClass?.name === selectedClass
   })
   
   const [exams, setExams] = useCachedState('marks_exams', [])
@@ -276,10 +280,21 @@ export default function MarksEntry() {
   const [currentPage, setCurrentPage] = useCachedState('marks_currentPage', 1)
   const PAGE_SIZE = 20
 
-  // 1. Fetch Courses on Mount
+  // 1. Fetch Courses and Classes on Mount
   useEffect(() => {
     fetchCourses()
+    fetchClasses()
   }, [])
+
+  const fetchClasses = async () => {
+    try {
+      const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      const res = await axios.get('http://localhost:5000/api/academic-classes', config)
+      setClasses(res.data)
+    } catch (err) {
+      console.error('Failed to fetch classes:', err)
+    }
+  }
 
   const fetchCourses = async () => {
     try {
@@ -305,7 +320,7 @@ export default function MarksEntry() {
       try {
         setLoadingGrid(true)
         const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-        const { data } = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams`, config)
+        const { data } = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams?division=${selectedDivision}`, config)
         
         setStudents(data.students || [])
         setExams(data.exams || [])
@@ -498,13 +513,35 @@ export default function MarksEntry() {
 
       <div className="flex flex-wrap items-end gap-4 mb-8 bg-white dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
           <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Department</label>
+             <select
+                value={selectedDept}
+                onChange={(e) => { 
+                  setSelectedDept(e.target.value); 
+                  setSelectedClass(''); 
+                  setSelectedDivision(''); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">— Select Dept —</option>
+                {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+             </select>
+          </div>
+
+          <div className="flex-1 min-w-[140px]">
              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
              <select
                 value={selectedClass}
-                onChange={(e) => { setSelectedClass(e.target.value); setCourseSelected(''); }}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                disabled={!selectedDept}
+                onChange={(e) => { 
+                  setSelectedClass(e.target.value); 
+                  setSelectedDivision(''); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              >
-                <option value="">— All Classes —</option>
+                <option value="">— Select Class —</option>
                 {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
              </select>
           </div>
@@ -513,10 +550,14 @@ export default function MarksEntry() {
              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
              <select
                 value={selectedDivision}
-                onChange={(e) => { setSelectedDivision(e.target.value); setCourseSelected(''); }}
-                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                disabled={!selectedClass}
+                onChange={(e) => { 
+                  setSelectedDivision(e.target.value); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              >
-                <option value="">— All Divisions —</option>
+                <option value="">— Select Division —</option>
                 {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
              </select>
           </div>
@@ -527,8 +568,9 @@ export default function MarksEntry() {
             </label>
             <select
               value={courseSelected}
+              disabled={!selectedDivision}
               onChange={e => setCourseSelected(e.target.value)}
-              className="w-full appearance-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
+              className="w-full appearance-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="">— Select Target Course —</option>
               {filteredCourses.map(c => (
@@ -582,8 +624,7 @@ export default function MarksEntry() {
             )}
           </div>
         )}
-      </div>
-
+      
       {loadingGrid && (
         <div className="py-20 flex justify-center text-indigo-500 animate-pulse font-semibold">
           Synchronizing Academic Registries...

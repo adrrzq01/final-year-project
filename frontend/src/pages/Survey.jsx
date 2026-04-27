@@ -7,6 +7,7 @@ export default function Survey() {
   const [students, setStudents] = useState([])
   const [allStudents, setAllStudents] = useState([])
   const [classes, setClasses] = useState([])
+  const [selectedDept, setSelectedDept] = useCachedState('srv_dept', '')
   const [selectedClassName, setSelectedClassName] = useCachedState('srv_className', '')
   const [selectedDivName, setSelectedDivName] = useCachedState('srv_divName', '')
   const [courses, setCourses] = useState([])
@@ -14,11 +15,13 @@ export default function Survey() {
   const [selectedCourseId, setSelectedCourseId] = useCachedState('srv_courseId', '')
   const [courseOutcomes, setCourseOutcomes] = useState([])
 
-  const uniqueClassNames = [...new Set(classes.map(c => c.name))].sort()
-  const uniqueDivs = [...new Set(classes.map(c => c.division))].filter(Boolean).sort()
+  const departments = ['BCA', 'BA', 'BCOM', 'BBA']
+  const uniqueClassNames = [...new Set(classes.map(c => c.name))]
+    .filter(name => !selectedDept || name.endsWith(selectedDept))
+    .sort()
+  const uniqueDivs = [...new Set(classes.filter(c => c.name === selectedClassName).map(c => c.division))].filter(Boolean).sort()
 
-  const targetClassId = classes.find(c => c.name === selectedClassName && c.division === selectedDivName)?.id
-  const filteredCourses = courses.filter(c => !targetClassId || c.academicClassId === targetClassId)
+  const filteredCourses = courses.filter(c => !selectedClassName || c.academicClass?.name === selectedClassName)
   
   // surveyRatings[coId] = 1, 2, or 3
   const [surveyRatings, setSurveyRatings] = useCachedState('srv_ratings', {})
@@ -203,15 +206,35 @@ export default function Survey() {
               <>
                 <div className="flex-1">
                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                     Select Dept
+                   </label>
+                   <select
+                     value={selectedDept}
+                     onChange={(e) => { 
+                        setSelectedDept(e.target.value); 
+                        setSelectedClassName(''); 
+                        setSelectedDivName(''); 
+                        setSelectedStudentId(''); 
+                        setSelectedCourseId(''); 
+                     }}
+                     disabled={loadingInitial}
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
+                   >
+                     <option value="">— Select Dept —</option>
+                     {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                   </select>
+                </div>
+                <div className="flex-1">
+                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                      Select Class
                    </label>
                    <select
                      value={selectedClassName}
                      onChange={(e) => { setSelectedClassName(e.target.value); setSelectedStudentId(''); setSelectedCourseId(''); }}
-                     disabled={loadingInitial}
-                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
+                     disabled={loadingInitial || !selectedDept}
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                    >
-                     <option value="">-- All Classes --</option>
+                     <option value="">— Select Class —</option>
                      {uniqueClassNames.map(cls => <option key={cls} value={cls}>{cls}</option>)}
                    </select>
                 </div>
@@ -222,10 +245,10 @@ export default function Survey() {
                    <select
                      value={selectedDivName}
                      onChange={(e) => { setSelectedDivName(e.target.value); setSelectedStudentId(''); setSelectedCourseId(''); }}
-                     disabled={loadingInitial}
-                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
+                     disabled={loadingInitial || !selectedClassName}
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                    >
-                     <option value="">-- All Divisions --</option>
+                     <option value="">— Select Division —</option>
                      {uniqueDivs.map(div => <option key={div} value={div}>Division {div}</option>)}
                    </select>
                 </div>
@@ -265,12 +288,13 @@ export default function Survey() {
                <select
                   value={selectedCourseId}
                   onChange={(e) => setSelectedCourseId(e.target.value)}
-                  disabled={loadingInitial}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
+                  disabled={loadingInitial || (!isStudent && !selectedDivName)}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                >
-                       ))}
-                     </>
-                  )}
+                  <option value="">-- Choose Course --</option>
+                  {filteredCourses.map(c => (
+                    <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                  ))}
                </select>
             </div>
          </div>

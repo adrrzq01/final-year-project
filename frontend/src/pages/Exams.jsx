@@ -28,17 +28,21 @@ const allExams = [
 
 export default function Exams() {
   const [courses, setCourses] = useState([])
+  const [classes, setClasses] = useState([])
+  const [selectedDept, setSelectedDept] = useCachedState('exams_selectedDept', '')
   const [selectedClass, setSelectedClass] = useCachedState('exams_selectedClass', '')
   const [selectedDivision, setSelectedDivision] = useCachedState('exams_selectedDivision', '')
   const [courseSelected, setCourseSelected] = useCachedState('exams_courseSelected', '')
   
-  const uniqueClasses = [...new Set(courses.map(c => c.academicClass?.name))].filter(Boolean).sort()
-  const uniqueDivisions = [...new Set(courses.map(c => c.academicClass?.division))].filter(Boolean).sort()
+  const departments = ['BCA', 'BA', 'BCOM', 'BBA']
+  const uniqueClasses = [...new Set(classes.map(c => c.name))]
+    .filter(Boolean)
+    .filter(cls => !selectedDept || cls.endsWith(selectedDept))
+    .sort()
+  const uniqueDivisions = [...new Set(classes.filter(c => c.name === selectedClass).map(c => c.division))].filter(Boolean).sort()
 
   const filteredCourses = courses.filter(c => {
-    const classMatch = !selectedClass || c.academicClass?.name === selectedClass
-    const divMatch = !selectedDivision || c.academicClass?.division === selectedDivision
-    return classMatch && divMatch
+    return !selectedClass || c.academicClass?.name === selectedClass
   })
 
   const [questions, setQuestions] = useCachedState('exams_questions', [])
@@ -64,17 +68,21 @@ export default function Exams() {
   }
 
   useEffect(() => {
-    fetchCourses()
+    fetchInitial()
   }, [])
 
-  const fetchCourses = async () => {
+  const fetchInitial = async () => {
     try {
       const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      const res = await axios.get('http://localhost:5000/api/courses', config)
-      setCourses(res.data)
-      if (res.data.length > 0) setCourseSelected(res.data[0].id)
+      const [courseRes, classRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/courses', config),
+        axios.get('http://localhost:5000/api/academic-classes', config)
+      ])
+      setCourses(courseRes.data)
+      setClasses(classRes.data)
+      if (courseRes.data.length > 0) setCourseSelected(courseRes.data[0].id)
     } catch (err) {
-      console.error('Failed to fetch courses:', err)
+      console.error('Failed to fetch initial data:', err)
     }
   }
 
@@ -83,7 +91,7 @@ export default function Exams() {
     const fetchExisting = async () => {
       try {
         const config = { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-        const res = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams`, config)
+        const res = await axios.get(`http://localhost:5000/api/courses/${courseSelected}/enrollments-exams?division=${selectedDivision}`, config)
         setExistingExams(res.data.exams || [])
       } catch (e) {
         console.error('Failed to fetch existing exams:', e)
@@ -266,13 +274,35 @@ export default function Exams() {
       {/* Course + Exam selectors */}
       <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
           <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Department</label>
+             <select
+                value={selectedDept}
+                onChange={(e) => { 
+                  setSelectedDept(e.target.value); 
+                  setSelectedClass(''); 
+                  setSelectedDivision(''); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">— Select Dept —</option>
+                {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+             </select>
+          </div>
+
+          <div className="flex-1 min-w-[140px]">
              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
              <select
                 value={selectedClass}
-                onChange={(e) => { setSelectedClass(e.target.value); setCourseSelected(''); }}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                disabled={!selectedDept}
+                onChange={(e) => { 
+                  setSelectedClass(e.target.value); 
+                  setSelectedDivision(''); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              >
-                <option value="">-- All Classes --</option>
+                <option value="">— Select Class —</option>
                 {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
              </select>
           </div>
@@ -281,10 +311,14 @@ export default function Exams() {
              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
              <select
                 value={selectedDivision}
-                onChange={(e) => { setSelectedDivision(e.target.value); setCourseSelected(''); }}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                disabled={!selectedClass}
+                onChange={(e) => { 
+                  setSelectedDivision(e.target.value); 
+                  setCourseSelected(''); 
+                }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
              >
-                <option value="">-- All Divisions --</option>
+                <option value="">— Select Division —</option>
                 {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
              </select>
           </div>
@@ -293,11 +327,12 @@ export default function Exams() {
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Target Course</label>
             <select
               value={courseSelected}
+              disabled={!selectedDivision}
               onChange={e => {
                 setCourseSelected(e.target.value)
                 setSaved(false)
               }}
-              className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
+              className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="">— Select Course —</option>
               {filteredCourses.map(c => (
@@ -311,11 +346,12 @@ export default function Exams() {
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Exam Type</label>
             <select 
               value={examType}
+              disabled={!courseSelected}
               onChange={e => {
                 setExamType(e.target.value)
                 setSaved(false)
               }}
-              className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
+              className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {availableExams.map(type => (
                 <option key={type.name} value={type.name}>{type.label}</option>
@@ -343,7 +379,6 @@ export default function Exams() {
             </span>
           </div>
         )}
-      </div>
 
       {/* Placeholder to retain logical layout spacing */}
 
