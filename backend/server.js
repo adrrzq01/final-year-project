@@ -471,7 +471,10 @@ app.get('/api/students', protect, async (req, res) => {
 app.get('/api/academic-classes', protect, async (req, res) => {
   try {
     const classes = await prisma.academicClass.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: [
+        { name: 'asc' },
+        { division: 'asc' }
+      ]
     })
     res.json(classes)
   } catch (error) {
@@ -1019,6 +1022,79 @@ app.get('/api/reports/attainment/:courseId', async (req, res) => {
   } catch (error) {
     console.error('Attainment calc error:', error)
     res.status(500).json({ error: error.message || 'Failed to calculate attainment' })
+  }
+})
+
+// 8.5 Consolidated Report Endpoint (Total Marks per Exam)
+app.get('/api/reports/consolidated/:courseId', protect, async (req, res) => {
+  try {
+    const { courseId } = req.params
+
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        academicClass: {
+          include: {
+            students: { orderBy: { rollNo: 'asc' } }
+          }
+        }
+      }
+    })
+
+    if (!course) return res.status(404).json({ error: 'Course not found' })
+    const students = course.academicClass.students
+
+    const exams = await prisma.exam.findMany({
+      where: { courseId },
+      include: {
+        questions: {
+          include: {
+            subQuestions: {
+              include: { marks: true }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    // exams list -> columns
+    const examColumns = exams.map(exam => {
+      let maxMarks = 0;
+      exam.questions.forEach(q => {
+        q.subQuestions.forEach(sq => {
+          maxMarks += (sq.maxMarks || 0)
+        })
+      })
+      return { id: exam.id, name: exam.name, maxMarks }
+    })
+
+    const marksGrid = {} // studentId -> { examId -> totalMarks }
+    students.forEach(s => { marksGrid[s.id] = {} })
+
+    exams.forEach(exam => {
+      exam.questions.forEach(q => {
+        q.subQuestions.forEach(sq => {
+          sq.marks.forEach(markRecord => {
+            if (marksGrid[markRecord.studentId]) {
+              const currentTotal = marksGrid[markRecord.studentId][exam.id] || 0
+              marksGrid[markRecord.studentId][exam.id] = currentTotal + markRecord.obtainedMarks
+            }
+          })
+        })
+      })
+    })
+
+    res.json({
+      courseDetails: { code: course.code, name: course.name },
+      students: students.map(s => ({ id: s.id, rollNo: s.rollNo, name: s.name })),
+      exams: examColumns,
+      marksGrid
+    })
+
+  } catch (error) {
+    console.error('Consolidated Report Error:', error)
+    res.status(500).json({ error: 'Failed to generate consolidated report.' })
   }
 })
 
@@ -1763,13 +1839,21 @@ const bootstrapClasses = async () => {
       'FYBCOM', 'SYBCOM', 'TYBCOM',
       'FYBBA', 'SYBBA', 'TYBBA'
     ]
+    const divisions = ['A', 'B']
+
     for (const className of classes) {
-      const existing = await prisma.academicClass.findFirst({ where: { name: className } })
-      if (!existing) {
-        await prisma.academicClass.create({ data: { name: className } })
+      for (const div of divisions) {
+        const existing = await prisma.academicClass.findFirst({ 
+          where: { name: className, division: div } 
+        })
+        if (!existing) {
+          await prisma.academicClass.create({ 
+            data: { name: className, division: div } 
+          })
+        }
       }
     }
-    console.log('✅ Default Academic Classes Seeded');
+    console.log('✅ Default Academic Classes Seeded with Divisions (A/B)');
   } catch(e) {
     console.warn("Could not bootstrap classes:", e.message)
   }

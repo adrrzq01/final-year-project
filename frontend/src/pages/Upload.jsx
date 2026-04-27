@@ -137,8 +137,8 @@ export default function Upload() {
             className="w-full appearance-none bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
           >
             <option value="" disabled>— Target Academic Class —</option>
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {classes.map(ac => (
+              <option key={ac.id} value={ac.id}>{ac.name} — Div {ac.division || 'A'}</option>
             ))}
           </select>
           <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

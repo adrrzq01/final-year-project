@@ -164,7 +164,7 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
                 >
                   <option value="" disabled>Select a Class</option>
                   {filteredClasses.map(ac => (
-                    <option key={ac.id} value={ac.id}>{ac.name}</option>
+                    <option key={ac.id} value={ac.id}>{ac.name} — Div {ac.division || 'A'}</option>
                   ))}
                 </select>
               </div>

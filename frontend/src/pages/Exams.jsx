@@ -264,7 +264,7 @@ export default function Exams() {
           >
             <option value="" disabled>Select Course</option>
             {courses.map(c => (
-              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+              <option key={c.id} value={c.id}>{c.code} - {c.name} ({c.academicClass?.name} - {c.academicClass?.division || 'A'})</option>
             ))}
           </select>
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

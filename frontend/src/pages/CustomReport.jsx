@@ -88,10 +88,10 @@ export default function CustomReport() {
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <TableProperties size={22} className="text-indigo-600 dark:text-indigo-400" />
-            Custom Marks Matrix Report
+            CO Articulation Matrix
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Full sub-question breakdown with CO attainment calculations (≥40% threshold)
+            Ultra-detailed sub-question breakdown with CO attainment mapping for accreditation.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -103,7 +103,7 @@ export default function CustomReport() {
             >
               <option value="">— Select Course —</option>
               {courses.map(c => (
-                <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
+                <option key={c.id} value={c.id}>{c.code} – {c.name} ({c.academicClass?.name} - {c.academicClass?.division || 'A'})</option>
               ))}
             </select>
             <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

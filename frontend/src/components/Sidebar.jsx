@@ -14,8 +14,8 @@ const menuItems = [
   { path: '/marks', icon: PenTool, label: 'Marks Entry' },
   { path: '/mapping', icon: Link, label: 'PO Mapping' },
   { path: '/survey', icon: ClipboardCheck, label: 'Exit Survey' },
-  { path: '/reports', icon: FileSpreadsheet, label: 'CO Reports' },
-  { path: '/custom-report', icon: TableProperties, label: 'Marks Matrix' },
+  { path: '/reports', icon: FileSpreadsheet, label: 'Consolidated Marks' },
+  { path: '/custom-report', icon: TableProperties, label: 'CO Articulation Matrix' },
   { path: '/my-attainment', icon: TrendingUp, label: 'My Attainment' },
   { path: '/profile', icon: User, label: 'My Profile' },
 ]

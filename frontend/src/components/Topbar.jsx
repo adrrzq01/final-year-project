@@ -12,8 +12,8 @@ const routeTitles = {
   '/marks': 'Marks Entry',
   '/mapping': 'PO Mapping',
   '/survey': 'Exit Survey',
-  '/reports': 'CO Reports',
-  '/custom-report': 'Marks Matrix',
+  '/reports': 'Consolidated Marks',
+  '/custom-report': 'CO Articulation Matrix',
   '/my-attainment': 'My CO Attainment',
   '/profile': 'My Profile',
 }

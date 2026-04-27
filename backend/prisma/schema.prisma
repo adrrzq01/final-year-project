@@ -43,6 +43,7 @@ model User {
 model AcademicClass {
   id        String   @id @default(uuid())
   name      String // e.g., "TYBCA"
+  division  String? // e.g., "A", "B"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

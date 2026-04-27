@@ -206,7 +206,7 @@ export default function Survey() {
                    >
                      <option value="">-- All Classes --</option>
                      {classes.map(c => (
-                       <option key={c.id} value={c.id}>{c.name}</option>
+                       <option key={c.id} value={c.id}>{c.name} — Div {c.division || 'A'}</option>
                      ))}
                    </select>
                 </div>
