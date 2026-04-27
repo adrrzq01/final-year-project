@@ -5,7 +5,17 @@ import Papa from 'papaparse'
 
 export default function Upload() {
   const [classes, setClasses] = useState([])
+  const [selectedClassName, setSelectedClassName] = useState('')
+  const [selectedDivName, setSelectedDivName] = useState('')
   const [classSelected, setClassSelected] = useState('')
+
+  const uniqueClassNames = [...new Set(classes.map(c => c.name))].sort()
+  const uniqueDivs = [...new Set(classes.map(c => c.division))].filter(Boolean).sort()
+
+  useEffect(() => {
+    const found = classes.find(c => c.name === selectedClassName && c.division === selectedDivName)
+    setClassSelected(found ? found.id : '')
+  }, [selectedClassName, selectedDivName, classes])
   const [isDragging, setIsDragging] = useState(false)
   const [uploadedFile, setUploadedFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -129,20 +139,32 @@ export default function Upload() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Upload Data</h2>
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">Import student lists via CSV files to save to the database</p>
         </div>
-        
-        <div className="relative min-w-[240px]">
-          <select
-            value={classSelected}
-            onChange={(e) => setClassSelected(e.target.value)}
-            className="w-full appearance-none bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
-          >
-            <option value="" disabled>— Target Academic Class —</option>
-            {classes.map(ac => (
-              <option key={ac.id} value={ac.id}>{ac.name} — Div {ac.division || 'A'}</option>
-            ))}
-          </select>
-          <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+             <div className="flex-1 relative">
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
+                <select
+                  value={selectedClassName}
+                  onChange={(e) => setSelectedClassName(e.target.value)}
+                  className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm"
+                >
+                  <option value="">-- All Classes --</option>
+                  {uniqueClassNames.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                </select>
+                <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
+             </div>
+             <div className="flex-1 relative">
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
+                <select
+                  value={selectedDivName}
+                  onChange={(e) => setSelectedDivName(e.target.value)}
+                  className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-all shadow-sm"
+                >
+                  <option value="">-- All Divisions --</option>
+                  {uniqueDivs.map(div => <option key={div} value={div}>Division {div}</option>)}
+                </select>
+                <ChevronDown size={16} className="absolute right-3.5 top-[42px] text-slate-400 pointer-events-none" />
+             </div>
+          </div>
       </div>
 
       {/* Drop Zone */}

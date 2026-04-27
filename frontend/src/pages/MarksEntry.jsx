@@ -246,7 +246,18 @@ const CSVUploader = ({ courseId, examId, subQuestions, refreshGrid, showAlert })
 export default function MarksEntry() {
   const { showAlert, showConfirm } = useAlert()
   const [courses, setCourses] = useState([])
+  const [selectedClass, setSelectedClass] = useCachedState('marks_selectedClass', '')
+  const [selectedDivision, setSelectedDivision] = useCachedState('marks_selectedDivision', '')
   const [courseSelected, setCourseSelected] = useCachedState('marks_courseSelected', '')
+  
+  const uniqueClasses = [...new Set(courses.map(c => c.academicClass?.name))].filter(Boolean).sort()
+  const uniqueDivisions = [...new Set(courses.map(c => c.academicClass?.division))].filter(Boolean).sort()
+
+  const filteredCourses = courses.filter(c => {
+    const classMatch = !selectedClass || c.academicClass?.name === selectedClass
+    const divMatch = !selectedDivision || c.academicClass?.division === selectedDivision
+    return classMatch && divMatch
+  })
   
   const [exams, setExams] = useCachedState('marks_exams', [])
   const [examSelected, setExamSelected] = useCachedState('marks_examSelected', '')
@@ -485,34 +496,65 @@ export default function MarksEntry() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center gap-4 p-5 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-        <div className="relative w-full sm:w-auto min-w-[240px]">
-          <select
-            value={courseSelected}
-            onChange={(e) => setCourseSelected(e.target.value)}
-            className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300"
-          >
-            <option value="">— Select Target Course —</option>
-            {courses.map(c => (
-              <option key={c.id} value={c.id}>{c.code} - {c.name} ({c.academicClass?.name} - {c.academicClass?.division || 'A'})</option>
-            ))}
-          </select>
-          <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        </div>
+      <div className="flex flex-wrap items-end gap-4 mb-8 bg-white dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
+          <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
+             <select
+                value={selectedClass}
+                onChange={(e) => { setSelectedClass(e.target.value); setCourseSelected(''); }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">— All Classes —</option>
+                {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+             </select>
+          </div>
 
-        <div className="relative w-full sm:w-auto min-w-[240px]">
-          <select
-            value={examSelected}
-            onChange={(e) => setExamSelected(e.target.value)}
-            disabled={!courseSelected || exams.length === 0}
-            className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer transition-colors duration-300 disabled:opacity-50"
-          >
-            <option value="">— Extract Exam Blueprint —</option>
-            {exams.map(e => (
-              <option key={e.id} value={e.id}>{e.name} (Max {e.totalMarks})</option>
-            ))}
-          </select>
-          <ChevronDown size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
+             <select
+                value={selectedDivision}
+                onChange={(e) => { setSelectedDivision(e.target.value); setCourseSelected(''); }}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">— All Divisions —</option>
+                {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
+             </select>
+          </div>
+
+          <div className="flex-[2] min-w-[240px] relative">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+              Select Target Course
+            </label>
+            <select
+              value={courseSelected}
+              onChange={e => setCourseSelected(e.target.value)}
+              className="w-full appearance-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
+            >
+              <option value="">— Select Target Course —</option>
+              {filteredCourses.map(c => (
+                <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3.5 top-[38px] text-slate-400 pointer-events-none" />
+          </div>
+
+          <div className="flex-1 min-w-[160px] relative">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+              Select Exam
+            </label>
+            <select
+              disabled={!courseSelected}
+              value={examSelected}
+              onChange={e => setExamSelected(e.target.value)}
+              className="w-full appearance-none bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">— Select Exam —</option>
+              {exams.map(ex => (
+                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3.5 top-[38px] text-slate-400 pointer-events-none" />
+          </div>
         </div>
         
         {subQuestions.length > 0 && (

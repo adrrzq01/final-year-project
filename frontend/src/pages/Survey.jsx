@@ -7,11 +7,18 @@ export default function Survey() {
   const [students, setStudents] = useState([])
   const [allStudents, setAllStudents] = useState([])
   const [classes, setClasses] = useState([])
-  const [selectedClassId, setSelectedClassId] = useCachedState('srv_classId', '')
+  const [selectedClassName, setSelectedClassName] = useCachedState('srv_className', '')
+  const [selectedDivName, setSelectedDivName] = useCachedState('srv_divName', '')
   const [courses, setCourses] = useState([])
   const [selectedStudentId, setSelectedStudentId] = useCachedState('srv_studId', '')
   const [selectedCourseId, setSelectedCourseId] = useCachedState('srv_courseId', '')
   const [courseOutcomes, setCourseOutcomes] = useState([])
+
+  const uniqueClassNames = [...new Set(classes.map(c => c.name))].sort()
+  const uniqueDivs = [...new Set(classes.map(c => c.division))].filter(Boolean).sort()
+
+  const targetClassId = classes.find(c => c.name === selectedClassName && c.division === selectedDivName)?.id
+  const filteredCourses = courses.filter(c => !targetClassId || c.academicClassId === targetClassId)
   
   // surveyRatings[coId] = 1, 2, or 3
   const [surveyRatings, setSurveyRatings] = useCachedState('srv_ratings', {})
@@ -27,12 +34,12 @@ export default function Survey() {
 
   // Filter students by selected class for admin/teacher view
   useEffect(() => {
-    if (!selectedClassId) {
+    if (!targetClassId) {
       setStudents(allStudents)
     } else {
-      setStudents(allStudents.filter(s => s.academicClassId === selectedClassId))
+      setStudents(allStudents.filter(s => s.academicClassId === targetClassId))
     }
-  }, [selectedClassId, allStudents])
+  }, [targetClassId, allStudents])
 
   // Initial Data Load
   useEffect(() => {
@@ -194,23 +201,35 @@ export default function Survey() {
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {!isStudent ? (
               <>
-                <div>
+                <div className="flex-1">
                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
-                     Filter by Class / Batch
+                     Select Class
                    </label>
                    <select
-                     value={selectedClassId}
-                     onChange={(e) => setSelectedClassId(e.target.value)}
+                     value={selectedClassName}
+                     onChange={(e) => { setSelectedClassName(e.target.value); setSelectedStudentId(''); setSelectedCourseId(''); }}
                      disabled={loadingInitial}
-                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
                    >
                      <option value="">-- All Classes --</option>
-                     {classes.map(c => (
-                       <option key={c.id} value={c.id}>{c.name} — Div {c.division || 'A'}</option>
-                     ))}
+                     {uniqueClassNames.map(cls => <option key={cls} value={cls}>{cls}</option>)}
                    </select>
                 </div>
-                <div>
+                <div className="flex-1">
+                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
+                     Select Division
+                   </label>
+                   <select
+                     value={selectedDivName}
+                     onChange={(e) => { setSelectedDivName(e.target.value); setSelectedStudentId(''); setSelectedCourseId(''); }}
+                     disabled={loadingInitial}
+                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
+                   >
+                     <option value="">-- All Divisions --</option>
+                     {uniqueDivs.map(div => <option key={div} value={div}>Division {div}</option>)}
+                   </select>
+                </div>
+                <div className="flex-1">
                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                      Student
                    </label>
@@ -218,7 +237,7 @@ export default function Survey() {
                       value={selectedStudentId}
                       onChange={(e) => setSelectedStudentId(e.target.value)}
                       disabled={loadingInitial}
-                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
                    >
                       <option value="">-- Select Student --</option>
                       {students.map(s => (
@@ -239,7 +258,7 @@ export default function Survey() {
               </div>
             )}
 
-            <div>
+            <div className={!isStudent ? 'md:col-span-3' : ''}>
                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wide">
                  Course to Evaluate
                </label>
@@ -247,15 +266,8 @@ export default function Survey() {
                   value={selectedCourseId}
                   onChange={(e) => setSelectedCourseId(e.target.value)}
                   disabled={loadingInitial}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:text-slate-200 text-sm font-medium transition-colors outline-none"
                >
-                  {courses.length === 0 && isStudent ? (
-                     <option value="">No pending surveys!</option>
-                  ) : (
-                     <>
-                       <option value="">-- Select Course --</option>
-                       {courses.map(c => (
-                          <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
                        ))}
                      </>
                   )}

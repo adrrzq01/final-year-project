@@ -23,8 +23,20 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
   ])
   
   const [academicClasses, setAcademicClasses] = useState([])
+  const [selectedClassName, setSelectedClassName] = useState('')
+  const [selectedDivName, setSelectedDivName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const uniqueClassNames = [...new Set(academicClasses.map(c => c.name))].sort()
+  const uniqueDivs = [...new Set(academicClasses.map(c => c.division))].filter(Boolean).sort()
+
+  useEffect(() => {
+    const found = academicClasses.find(c => c.name === selectedClassName && c.division === selectedDivName)
+    if (found) {
+      setFormData(prev => ({ ...prev, academicClassId: found.id }))
+    }
+  }, [selectedClassName, selectedDivName, academicClasses])
 
   useEffect(() => {
     if (isOpen) {
@@ -154,19 +166,35 @@ export default function AddCourseModal({ isOpen, onClose, onCourseAdded }) {
             <h4 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-3 border-b border-indigo-100 dark:border-indigo-900 pb-2">Course Details</h4>
             
             <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Academic Class (Batch)</label>
-                <select
-                  required
-                  value={formData.academicClassId}
-                  onChange={e => setFormData({...formData, academicClassId: e.target.value})}
-                  className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all font-semibold"
-                >
-                  <option value="" disabled>Select a Class</option>
-                  {filteredClasses.map(ac => (
-                    <option key={ac.id} value={ac.id}>{ac.name} — Div {ac.division || 'A'}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Academic Class (Batch)</label>
+                  <select
+                    required
+                    value={selectedClassName}
+                    onChange={e => setSelectedClassName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all font-semibold"
+                  >
+                    <option value="" disabled>Select Class</option>
+                    {uniqueClassNames.map(cls => (
+                      <option key={cls} value={cls}>{cls}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Division</label>
+                  <select
+                    required
+                    value={selectedDivName}
+                    onChange={e => setSelectedDivName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:text-slate-100 transition-all font-semibold"
+                  >
+                    <option value="" disabled>Select Division</option>
+                    {uniqueDivs.map(div => (
+                      <option key={div} value={div}>Division {div}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-5 gap-4">

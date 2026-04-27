@@ -25,11 +25,22 @@ function groupColumnsByExam(columns) {
 
 export default function CustomReport() {
   const [courses, setCourses] = useState([])
+  const [selectedClass, setSelectedClass] = useCachedState('cust_selectedClass', '')
+  const [selectedDivision, setSelectedDivision] = useCachedState('cust_selectedDivision', '')
   const [selectedCourseId, setSelectedCourseId] = useCachedState('cust_selectedCourseId', '')
   const [report, setReport] = useCachedState('cust_report', null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const tableRef = useRef(null)
+
+  const uniqueClasses = [...new Set(courses.map(c => c.academicClass?.name))].filter(Boolean).sort()
+  const uniqueDivisions = [...new Set(courses.map(c => c.academicClass?.division))].filter(Boolean).sort()
+
+  const filteredCourses = courses.filter(c => {
+    const classMatch = !selectedClass || c.academicClass?.name === selectedClass
+    const divMatch = !selectedDivision || c.academicClass?.division === selectedDivision
+    return classMatch && divMatch
+  })
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -94,29 +105,54 @@ export default function CustomReport() {
             Ultra-detailed sub-question breakdown with CO attainment mapping for accreditation.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap items-end gap-4 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
+          <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Class</label>
+             <select
+                value={selectedClass}
+                onChange={(e) => { setSelectedClass(e.target.value); setSelectedCourseId(''); }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">-- All Classes --</option>
+                {uniqueClasses.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+             </select>
+          </div>
+
+          <div className="flex-1 min-w-[140px]">
+             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Division</label>
+             <select
+                value={selectedDivision}
+                onChange={(e) => { setSelectedDivision(e.target.value); setSelectedCourseId(''); }}
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+             >
+                <option value="">-- All Divisions --</option>
+                {uniqueDivisions.map(div => <option key={div} value={div}>Division {div}</option>)}
+             </select>
+          </div>
+
+          <div className="flex-[2] min-w-[240px] relative">
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Select Course</label>
             <select
               value={selectedCourseId}
               onChange={e => setSelectedCourseId(e.target.value)}
-              className="appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer min-w-[240px] shadow-sm"
+              className="w-full appearance-none bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 pl-4 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent cursor-pointer transition-all shadow-sm"
             >
               <option value="">— Select Course —</option>
-              {courses.map(c => (
-                <option key={c.id} value={c.id}>{c.code} – {c.name} ({c.academicClass?.name} - {c.academicClass?.division || 'A'})</option>
+              {filteredCourses.map(c => (
+                <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-3.5 top-[38px] text-slate-400 pointer-events-none" />
           </div>
-          {report && (
-            <button
-              onClick={handleDownloadCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-md shadow-emerald-200 dark:shadow-emerald-900/30"
-            >
-              <Download size={15} /> Export CSV
-            </button>
-          )}
-        </div>
+          
+          <button 
+            disabled={!report}
+            onClick={handleDownloadCSV}
+            className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200 dark:shadow-none disabled:opacity-50"
+          >
+            <Download size={16} /> Export CSV
+          </button>
+      </div>
       </div>
 
       {/* States */}
